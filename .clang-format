@@ -1,0 +1,12 @@
+BasedOnStyle: Google
+IndentWidth: 4
+AccessModifierOffset: -4
+ColumnLimit: 100
+SortIncludes: Never
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortCaseLabelsOnASingleLine: true
+DerivePointerAlignment: false
+PointerAlignment: Right
+AlignConsecutiveShortCaseStatements:
+  Enabled: true
