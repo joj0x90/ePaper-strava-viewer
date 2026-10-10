@@ -1,0 +1,7 @@
+{
+    // PlatformIO generates c_cpp_properties.json for the Microsoft C/C++ extension,
+    // so use its IntelliSense here instead of clangd (disabled globally in user settings).
+    "C_Cpp.intelliSenseEngine": "default",
+    "C_Cpp.errorSquiggles": "enabled",
+    "clangd.enable": false
+}
