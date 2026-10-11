@@ -32,6 +32,9 @@ Show your Strava activities on a Waveshare 7.5" e-Paper display driven by the Wa
 `platformio.ini`:
 
 ```ini
+[platformio]
+default_envs = esp32dev
+
 [env:esp32dev]
 platform = espressif32
 board = esp32dev
@@ -43,7 +46,13 @@ board_build.partitions = huge_app.csv
 lib_deps =
     zinggjm/GxEPD2
     bblanchon/ArduinoJson
+
+[env:icon-test]
+extends = env:esp32dev
+build_src_filter = -<*> +<../tools/icon_overview/device/>
 ```
+
+`esp32dev` is the normal firmware; `icon-test` is a test firmware, see [Testing](#testing).
 
 - **GxEPD2**: e-Paper driver. The 7.5" V2 panel uses the `GxEPD2_750_T7` class.
 - **ArduinoJson**: parses the responses from the Strava API.
@@ -120,6 +129,52 @@ Use it in the code with `#include "secrets.h"`.
    ```
 
 If the upload hangs at `Connecting........`, hold the **BOOT** button on the driver board until the upload starts, then press **EN/RST** after it finishes.
+
+## Testing
+
+### Activity icons
+
+The heading shows an icon for the activity's `sport_type`.
+
+Both test methods draw the same overview: one grid cell per sport type with its icon and name, plus the fallback icon `(other)` and the error icon `(error)`.
+
+#### On the PC (no flashing)
+
+```sh
+firmware/tools/icon_overview/pc/run.sh
+```
+
+Compiles the icon code for the PC and writes `firmware/tools/icon_overview/pc/build/icon_overview.png` (800×480, like the display). Fast to repeat while designing icons.
+
+Requirements:
+- `g++`
+- the libraries PlatformIO downloads: run `pio run` in `firmware/` once
+- Python 3 with Pillow (`pip install pillow`) for the PNG; without it you get `icon_overview.pbm`, which most image viewers open as well
+
+The script uses small stand-ins for the Arduino core (`firmware/tools/icon_overview/pc/stubs/`) so Adafruit GFX compiles on the PC. The drawing code is the same as on the ESP32, so the image matches the panel pixel for pixel.
+
+#### On the e-paper
+
+```sh
+cd firmware
+pio run -e icon-test -t upload
+```
+
+Flashes a test firmware (`firmware/tools/icon_overview/device/main.cpp`) that draws the overview once and puts the display to sleep. Use this to check the final look on the panel. Afterwards flash the normal firmware again with `pio run -t upload`.
+
+In VS Code you can switch the environment in the PlatformIO toolbar (*Switch PlatformIO Project Environment*) to `env:icon-test` and use Upload as usual.
+
+### Error codes
+
+WiFi and Strava errors are shown on the display and logged with details on the serial monitor (`pio device monitor`), for example:
+
+```
+WiFi error 1 (status 1): WiFi network not found
+Strava error 1 (HTTP 401): Strava login failed
+{"message":"Authorization Error", ...}
+```
+
+The numbers are the values of `WifiErrorCode` (`firmware/lib/WifiConnect/src/WifiConnect.h`) and `StravaErrorCode` (`firmware/lib/StravaApi/src/StravaApi.h`). For Strava errors the last line is the response body or the JSON parser error.
 
 ## Troubleshooting
 
