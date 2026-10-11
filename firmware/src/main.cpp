@@ -20,7 +20,7 @@ static void showLastActivity() {
     StravaError stravaError =
         fetchAccessToken(STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET, STRAVA_REFRESH_TOKEN, accessToken);
     if (stravaError.ok()) {
-        stravaError = fetchActivityById(accessToken, 20448162500, activity);
+        stravaError = fetchActivityById(accessToken, 19572817451, activity);
         // stravaError = fetchLastActivity(accessToken, activity);
     }
     if (!stravaError.ok()) {
@@ -30,8 +30,8 @@ static void showLastActivity() {
         return;
     }
 
-    Serial.printf("%s | %s | %.2f km\n", activity.type.c_str(), activity.date.c_str(),
-                  activity.distance_km);
+    Serial.printf("%s | %s | %s | %.2f km\n", activity.name.c_str(),
+                  activity.type.c_str(), activity.date.c_str(), activity.distance_km);
     drawActivity(activity);
 }
 

@@ -207,7 +207,7 @@ StravaError fetchActivityById(const String &accessToken, uint64_t id, StravaActi
 
     char url[96];
     snprintf(url, sizeof(url),
-             "https://www.strava.com/api/v3/activities/%llu?include_all_efforts=false",
+             "https://www.strava.com/api/v3/activities/%llu?include_all_efforts=true",
              (unsigned long long)id);
 
     JsonDocument doc;
