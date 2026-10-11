@@ -99,6 +99,7 @@ static void parseActivity(JsonObjectConst a, StravaActivity &activity) {
     activity.date = formatDate(a["start_date_local"].as<String>());
     activity.distance_km = a["distance"].as<float>() / 1000.0f;
     activity.showMap = strlen(a["map"]["summary_polyline"] | "") > 0;
+    activity.map = a["map"]["summary_polyline"].as<String>();
     activity.moving_time_s = a["moving_time"].as<uint32_t>();
     activity.total_elev_m = a["total_elevation_gain"].as<float>();
     activity.achievement_count = a["achievement_count"].as<uint8_t>();

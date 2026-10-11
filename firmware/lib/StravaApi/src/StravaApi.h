@@ -11,6 +11,7 @@ struct StravaActivity {
     String date;         // e.g. "09.10.2026 07:12"
     float distance_km;
     bool showMap;  // true for most activities, like runs and rides, false for e.g. indoor swims.
+    String map;    // string representation of the map-object
     uint32_t moving_time_s;     // in seconds
     float total_elev_m;         // total elevation in meters
     uint8_t achievement_count;  // number or achievements earned during the activity

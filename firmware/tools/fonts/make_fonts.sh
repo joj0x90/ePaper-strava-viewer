@@ -19,7 +19,7 @@ gcc -w $(pkg-config --cflags freetype2) "$fontconvert_src/fontconvert.c" \
     $(pkg-config --libs freetype2) -o "$build/fontconvert"
 
 # <font file> <size in pt>; 0x20-0xFF = ASCII + Latin-1, file name gets "8b" for 8 bit
-for spec in "FreeSans 18" "FreeSansBold 24"; do
+for spec in "FreeSans 12" "FreeSans 18" "FreeSansBold 24"; do
     set -- $spec
     "$build/fontconvert" "$font_dir/$1.otf" "$2" 32 255 > "$out/$1$2pt8b.h"
     echo "$out/$1$2pt8b.h"

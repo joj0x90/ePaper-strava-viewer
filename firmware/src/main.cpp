@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <Preferences.h>
+#include <esp_ota_ops.h>
 
 #include "secrets.h"
 #include "EpaperDisplay.h"
@@ -15,23 +16,34 @@ static const uint32_t EARLY_WAKE_MARGIN_S = 600;
 // Fallback interval if the clock has never been set (no WiFi since power-on)
 static const uint32_t FALLBACK_SLEEP_S = 3600;
 
-// ID of the activity currently on the display, kept in flash (NVS) so it survives deep sleep,
-// resets and power loss. 0 means no activity is shown (nothing drawn yet, or an error screen).
+// What is currently on the display, kept in flash (NVS) so it survives deep sleep, resets and
+// power loss: the activity ID (0 = no activity, e.g. an error screen) and the firmware that drew
+// it. Flashing a new firmware (e.g. a layout change) thus redraws the same activity once.
 static const char *PREFS_NAMESPACE = "display";
 static const char *PREFS_SHOWN_ID = "shownId";
+static const char *PREFS_SHOWN_FIRMWARE = "shownFw";
 
-static uint64_t loadShownActivityId() {
+// Hash of the running firmware, changes with every build that changes the code
+static String firmwareHash() {
+    char hash[17];  // the first 16 hex digits are enough to tell builds apart
+    esp_ota_get_app_elf_sha256(hash, sizeof(hash));
+    return hash;
+}
+
+static bool isAlreadyShown(uint64_t activityId) {
     Preferences prefs;
-    if (!prefs.begin(PREFS_NAMESPACE, true)) return 0;  // namespace doesn't exist yet
-    uint64_t id = prefs.getULong64(PREFS_SHOWN_ID, 0);
+    if (!prefs.begin(PREFS_NAMESPACE, true)) return false;  // namespace doesn't exist yet
+    bool shown = prefs.getULong64(PREFS_SHOWN_ID, 0) == activityId &&
+                 prefs.getString(PREFS_SHOWN_FIRMWARE) == firmwareHash();
     prefs.end();
-    return id;
+    return shown;
 }
 
 static void saveShownActivityId(uint64_t id) {
     Preferences prefs;
     prefs.begin(PREFS_NAMESPACE, false);
     prefs.putULong64(PREFS_SHOWN_ID, id);
+    prefs.putString(PREFS_SHOWN_FIRMWARE, firmwareHash());
     prefs.end();
 }
 
@@ -51,8 +63,8 @@ static void showLastActivity() {
     StravaError stravaError =
         fetchAccessToken(STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET, STRAVA_REFRESH_TOKEN, accessToken);
     if (stravaError.ok()) {
-        stravaError = fetchLastActivity(accessToken, activity);
-        // stravaError = fetchActivityById(accessToken, 19572817451, activity);
+        // stravaError = fetchLastActivity(accessToken, activity);
+        stravaError = fetchActivityById(accessToken, 19572817451, activity);
     }
     if (!stravaError.ok()) {
         Serial.printf("Strava error %d (HTTP %d): %s\n%s\n", static_cast<int>(stravaError.code),
@@ -64,8 +76,8 @@ static void showLastActivity() {
     Serial.printf("%llu | %s | %s | %s | %.2f km\n", (unsigned long long)activity.id,
                   activity.name.c_str(), activity.type.c_str(), activity.date.c_str(),
                   activity.distance_km);
-    if (activity.id == loadShownActivityId()) {
-        Serial.println("Activity is already shown, not refreshing the display");
+    if (isAlreadyShown(activity.id)) {
+        Serial.println("Activity is already shown by this firmware, not refreshing the display");
         return;
     }
 
