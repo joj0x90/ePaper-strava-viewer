@@ -73,6 +73,7 @@ StravaError fetchAccessToken(const char *clientId, const char *clientSecret,
 
 // Only keep the fields we need, to save memory
 static void addActivityFilter(JsonObject filter) {
+    filter["id"] = true;
     filter["sport_type"] = true;
     filter["name"] = true;
     filter["description"] = true;
@@ -91,6 +92,7 @@ static void addActivityFilter(JsonObject filter) {
 }
 
 static void parseActivity(JsonObjectConst a, StravaActivity &activity) {
+    activity.id = a["id"].as<uint64_t>();
     activity.type = a["sport_type"].as<String>();
     activity.name = a["name"].as<String>();
     activity.description = a["description"] | "";

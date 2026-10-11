@@ -4,6 +4,7 @@
 #include <Arduino.h>
 
 struct StravaActivity {
+    uint64_t id;         // Strava activity ID, the number in strava.com/activities/<id>
     String type;         // e.g. "Trail Run"
     String name;         // e.g. "Morning Run"
     String description;  // e.g. "Felt great, sunny weather"
