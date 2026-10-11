@@ -6,9 +6,21 @@
 
 namespace {
 
-const uint8_t COLUMNS = 7;
+const uint8_t COLUMNS = 8;
 const int16_t ICON_SIZE = 48;
 const int16_t CHAR_W = 6, LINE_H = 10;  // built-in 5x7 font at size 1
+
+// Icons that don't belong to a sport type, shown after the sport types
+struct ExtraIcon {
+    Icon icon;
+    const char *label;
+};
+const ExtraIcon EXTRA_ICONS[] = {
+    {Icon::Generic, "(other)"},
+    {Icon::Error, "(error)"},
+    {Icon::Achievement, "(achievement)"},
+};
+const uint8_t EXTRA_CELLS = sizeof(EXTRA_ICONS) / sizeof(EXTRA_ICONS[0]);
 
 // Prints name centered below the icon, wrapped at camelCase word boundaries
 // ("HighIntensityIntervalTraining" -> "HighIntensity" / "IntervalTraining").
@@ -37,7 +49,7 @@ void printWrapped(Adafruit_GFX &gfx, const char *name, int16_t centerX, int16_t 
 
 void drawCell(Adafruit_GFX &gfx, uint8_t index, Icon icon, const char *name, uint16_t color,
               uint16_t background) {
-    const uint8_t rows = (sportTypeCount() + 2 + COLUMNS - 1) / COLUMNS;
+    const uint8_t rows = (sportTypeCount() + EXTRA_CELLS + COLUMNS - 1) / COLUMNS;
     const int16_t cellW = gfx.width() / COLUMNS, cellH = gfx.height() / rows;
     const int16_t x = (index % COLUMNS) * cellW, y = (index / COLUMNS) * cellH;
 
@@ -59,6 +71,7 @@ void drawIconOverview(Adafruit_GFX &gfx, uint16_t color, uint16_t background) {
     for (; i < sportTypeCount(); i++) {
         drawCell(gfx, i, iconForSportType(sportTypeName(i)), sportTypeName(i), color, background);
     }
-    drawCell(gfx, i++, iconForSportType("SomethingUnknown"), "(other)", color, background);
-    drawCell(gfx, i++, Icon::Error, "(error)", color, background);
+    for (const ExtraIcon &extra : EXTRA_ICONS) {
+        drawCell(gfx, i++, extra.icon, extra.label, color, background);
+    }
 }

@@ -29,6 +29,7 @@ enum class StravaErrorCode : uint8_t {
     ActivityRequestFailed,  // activities endpoint did not answer with HTTP 200
     ActivityInvalidJson,
     NoActivities,
+    ActivityNotFound,  // no activity with that ID, or it belongs to another athlete
 };
 
 struct StravaError {
@@ -45,5 +46,9 @@ StravaError fetchAccessToken(const char *clientId, const char *clientSecret,
                              const char *refreshToken, String &accessToken);
 
 StravaError fetchLastActivity(const String &accessToken, StravaActivity &activity);
+
+// Loads one activity by its Strava ID (the number in strava.com/activities/<id>).
+// Unlike fetchLastActivity(), this also fills description, calories and device_name.
+StravaError fetchActivityById(const String &accessToken, uint64_t id, StravaActivity &activity);
 
 #endif  // STRAVA_API_H

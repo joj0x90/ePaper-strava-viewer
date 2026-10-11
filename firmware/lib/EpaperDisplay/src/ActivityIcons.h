@@ -4,6 +4,7 @@
 #include <Adafruit_GFX.h>
 
 enum class Icon : uint8_t {
+    None,   // empty for no-icon
     Error,  // warning triangle with exclamation mark
     Run,
     TrailRun,
@@ -18,7 +19,8 @@ enum class Icon : uint8_t {
     Paddle,  // rowing, kayaking, canoeing, SUP, sailing
     Snow,    // skiing, snowboarding, ice skating
     Weights,
-    Generic,  // stopwatch, for every sport type without its own icon
+    Generic,      // stopwatch, for every sport type without its own icon
+    Achievement,  // medal with star, for Strava achievements
 };
 
 // Maps a Strava sport_type (e.g. "TrailRun", "GravelRide") to its icon.

@@ -12,6 +12,7 @@ struct SportIcon {
 
 // Strava sport_type values, see https://developers.strava.com/docs/reference/#api-models-SportType
 const SportIcon SPORT_ICONS[] = {
+    {"None", Icon::None},
     {"Run", Icon::Run},
     {"VirtualRun", Icon::Run},
     {"TrailRun", Icon::TrailRun},
@@ -301,6 +302,24 @@ void drawStopwatch(Painter &p) {
     p.circle(20, 23, 2.2f);
 }
 
+// Medal on a ribbon with a star in the middle.
+void drawMedal(Painter &p) {
+    const float leftStrap[] = {7, 1, 15, 1, 22, 18, 15, 20};
+    const float rightStrap[] = {25, 1, 33, 1, 25, 20, 18, 18};
+    p.polygon(leftStrap, 4, 15, 10);
+    p.polygon(rightStrap, 4, 25, 10);
+    p.ring(20, 27, 12.5f, 2.5f);
+
+    float star[20];
+    for (uint8_t i = 0; i < 10; i++) {
+        float a = i * (float)M_PI / 5 - (float)M_PI / 2;
+        float r = i % 2 == 0 ? 7.5f : 3.2f;  // alternating outer and inner points
+        star[2 * i] = 20 + cosf(a) * r;
+        star[2 * i + 1] = 27.5f + sinf(a) * r;
+    }
+    p.polygon(star, 10, 20, 27.5f);
+}
+
 }  // namespace
 
 uint8_t sportTypeCount() {
@@ -322,6 +341,7 @@ void drawIcon(Adafruit_GFX &gfx, Icon icon, int16_t x, int16_t y, int16_t size, 
               uint16_t background) {
     Painter p(gfx, x, y, size, color, background);
     switch (icon) {
+        case Icon::None:  break;
         case Icon::Error: drawError(p); break;
         case Icon::Run:   drawShoe(p, false); break;
         case Icon::TrailRun:
@@ -340,5 +360,6 @@ void drawIcon(Adafruit_GFX &gfx, Icon icon, int16_t x, int16_t y, int16_t size, 
         case Icon::Snow:          drawSnowflake(p); break;
         case Icon::Weights:       drawDumbbell(p); break;
         case Icon::Generic:       drawStopwatch(p); break;
+        case Icon::Achievement:   drawMedal(p); break;
     }
 }
