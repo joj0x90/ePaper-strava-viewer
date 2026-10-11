@@ -11,6 +11,9 @@ void initDisplay();
 void drawActivity(StravaActivity activity);
 void drawError(const char *message);
 
+// Test screen with every sport type, its icon and its name.
+void drawIconOverviewScreen();
+
 // Puts the panel into deep sleep; call initDisplay() again before the next draw.
 void hibernateDisplay();
 

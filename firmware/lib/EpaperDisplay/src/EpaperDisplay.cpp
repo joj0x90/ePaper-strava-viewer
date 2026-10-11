@@ -5,8 +5,13 @@
 #include <Fonts/FreeSans18pt7b.h>
 #include <Fonts/FreeSansBold24pt7b.h>
 
+#include "ActivityIcons.h"
+#include "IconOverview.h"
+
 #define HEADING_START_X 20
 #define HEADING_START_Y 40
+#define HEADING_ICON_SIZE 40
+#define HEADING_ICON_GAP 12
 
 #define BODY_START_X 40
 #define BODY_START_Y 150
@@ -16,9 +21,13 @@ static GxEPD2_BW<GxEPD2_750_T7, GxEPD2_750_T7::HEIGHT> display(GxEPD2_750_T7(15,
 
 // Only draws into the buffer; call inside a firstPage()/nextPage() loop and never
 // change the window here, that would clip everything drawn in the same loop.
-static void drawHeading(const char *heading) {
+static void drawHeading(const char *heading, Icon icon) {
+    // Icon centered on the cap height of the heading font (~25 px)
+    const int16_t iconY = HEADING_START_Y - 12 - HEADING_ICON_SIZE / 2;
+    drawIcon(display, icon, HEADING_START_X, iconY, HEADING_ICON_SIZE, GxEPD_BLACK, GxEPD_WHITE);
+
     display.setFont(&FreeSans18pt7b);
-    display.setCursor(HEADING_START_X, HEADING_START_Y);
+    display.setCursor(HEADING_START_X + HEADING_ICON_SIZE + HEADING_ICON_GAP, HEADING_START_Y);
     display.print(heading);
     const int16_t lineY = HEADING_START_Y + 20;
     display.drawLine(HEADING_START_X, lineY, display.width() - HEADING_START_X, lineY, GxEPD_BLACK);
@@ -35,16 +44,13 @@ void drawActivity(StravaActivity act) {
     char distance[16];
     snprintf(distance, sizeof(distance), "%.2f km", act.distance_km);
 
-    char title[35];
-    snprintf(title, sizeof(title), "%s: %s", act.type.c_str(), act.name.c_str());
-
     display.setFullWindow();
     display.firstPage();
     do {
         display.fillScreen(GxEPD_WHITE);
         display.setTextColor(GxEPD_BLACK);
 
-        drawHeading(title);
+        drawHeading(act.name.c_str(), iconForSportType(act.type.c_str()));
 
         display.setFont(&FreeSansBold24pt7b);
         display.setCursor(BODY_START_X, BODY_START_Y);
@@ -66,9 +72,17 @@ void drawError(const char *message) {
     do {
         display.fillScreen(GxEPD_WHITE);
         display.setTextColor(GxEPD_BLACK);
-        drawHeading("Error:");
+        drawHeading("Error:", Icon::Error);
         display.setCursor(BODY_START_X, BODY_START_Y);
         display.print(message);
+    } while (display.nextPage());
+}
+
+void drawIconOverviewScreen() {
+    display.setFullWindow();
+    display.firstPage();
+    do {
+        drawIconOverview(display, GxEPD_BLACK, GxEPD_WHITE);
     } while (display.nextPage());
 }
 
