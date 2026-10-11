@@ -80,32 +80,38 @@ static void printText(const char *utf8) {
     display.print(utf8ToLatin1(utf8));
 }
 
-// Only draws into the buffer; call inside a firstPage()/nextPage() loop and never
-// change the window here, that would clip everything drawn in the same loop.
-static void drawHeading(const char *heading, Icon icon = Icon::None) {
-    drawIcon(display, icon, HEADING_START_X, HEADING_ICON_Y, HEADING_ICON_SIZE, GxEPD_BLACK,
-             GxEPD_WHITE);
-
-    display.setFont(&FreeSans18pt8b);
-    display.setCursor(HEADING_START_X + HEADING_ICON_SIZE + HEADING_ICON_GAP, HEADING_START_Y);
-    printText(heading);
-    const int16_t lineY = HEADING_START_Y + 20;
-    display.drawLine(HEADING_START_X, lineY, display.width() - HEADING_START_X, lineY, GxEPD_BLACK);
+// Width from the cursor to the right end of the text, in the current font
+static int16_t textWidth(const String &text) {
+    int16_t x1, y1;
+    uint16_t w, h;
+    display.getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
+    return x1 + w;
 }
 
-void initDisplay() {
-    SPI.end();
-    SPI.begin(13, 12, 14, 15);  // SCK=13, MISO=12 (unused), MOSI=14, SS=15
-    display.init(115200, true, 2, false);
-    display.setRotation(0);
+// Converts the text to Latin-1 like printText() and, if it's wider than maxWidth in the
+// current font, cuts it and appends "...".
+static String fitText(const char *utf8, int16_t maxWidth) {
+    String text = utf8ToLatin1(utf8);
+    display.setTextWrap(false);  // otherwise long text is measured as wrapped at the screen edge
+    if (textWidth(text) > maxWidth) {
+        while (!text.isEmpty() && textWidth(text + "...") > maxWidth) {
+            text.remove(text.length() - 1);
+        }
+        while (text.endsWith(" ")) text.remove(text.length() - 1);
+        text += "...";
+    }
+    display.setTextWrap(true);  // Adafruit GFX default
+    return text;
 }
 
 // Achievement badge at the right end of the heading, with the count left of it.
-// Only draws into the buffer, like drawHeading().
-static void drawAchievements(uint8_t achievements) {
-    if (achievements == 0) return;
+// Only draws into the buffer, like drawHeading(). Returns the left end of what it drew,
+// or the right end of the heading if there are no achievements.
+static int16_t drawAchievements(uint8_t achievements) {
+    const int16_t rightEnd = display.width() - HEADING_START_X;
+    if (achievements == 0) return rightEnd;
 
-    const int16_t iconX = display.width() - HEADING_START_X - HEADING_ICON_SIZE;
+    const int16_t iconX = rightEnd - HEADING_ICON_SIZE;
     drawIcon(display, Icon::Achievement, iconX, HEADING_ICON_Y, HEADING_ICON_SIZE, GxEPD_BLACK,
              GxEPD_WHITE);
 
@@ -118,8 +124,35 @@ static void drawAchievements(uint8_t achievements) {
     int16_t x1, y1;
     uint16_t w, h;
     display.getTextBounds(text, 0, HEADING_START_Y, &x1, &y1, &w, &h);
-    display.setCursor(iconX - HEADING_ICON_GAP - w - x1, HEADING_START_Y);
+    const int16_t textX = iconX - HEADING_ICON_GAP - w;
+    display.setCursor(textX - x1, HEADING_START_Y);
     display.print(text);
+    return textX;
+}
+
+// Only draws into the buffer; call inside a firstPage()/nextPage() loop and never
+// change the window here, that would clip everything drawn in the same loop.
+static void drawHeading(const char *heading, uint8_t achievements, Icon icon = Icon::None) {
+    drawIcon(display, icon, HEADING_START_X, HEADING_ICON_Y, HEADING_ICON_SIZE, GxEPD_BLACK,
+             GxEPD_WHITE);
+
+    const int16_t headingEnd = drawAchievements(achievements) - HEADING_ICON_GAP;
+
+    // the heading gets the space between the icon and the achievements, cut with "..."
+    display.setFont(&FreeSans18pt8b);
+    const int16_t heading_start = HEADING_START_X + HEADING_ICON_SIZE + HEADING_ICON_GAP;
+    display.setCursor(heading_start, HEADING_START_Y);
+    display.print(fitText(heading, headingEnd - heading_start));
+
+    const int16_t lineY = HEADING_START_Y + 20;
+    display.drawLine(HEADING_START_X, lineY, display.width() - HEADING_START_X, lineY, GxEPD_BLACK);
+}
+
+void initDisplay() {
+    SPI.end();
+    SPI.begin(13, 12, 14, 15);  // SCK=13, MISO=12 (unused), MOSI=14, SS=15
+    display.init(115200, true, 2, false);
+    display.setRotation(0);
 }
 
 static void drawActivityStats(StravaActivity act) {
@@ -159,7 +192,7 @@ static void drawActivityMap(const String &polyline) {
     const int16_t boxX = display.width() / 2 + MAP_MARGIN;
     const int16_t boxY = HEADING_START_Y + 20 + MAP_MARGIN;  // below the heading line
     const int16_t boxW = display.width() - HEADING_START_X - boxX;
-    const int16_t boxH = display.height() - MAP_MARGIN - boxY;
+    const int16_t boxH = display.height() - (FOOTER_SIZE_Y * 2) - MAP_MARGIN - boxY;
 
     // Same scale on both axes, so the route isn't distorted; centered in the box
     const float scale =
@@ -208,8 +241,7 @@ void drawActivity(StravaActivity act) {
         display.fillScreen(GxEPD_WHITE);
         display.setTextColor(GxEPD_BLACK);
 
-        drawHeading(act.name.c_str(), iconForSportType(act.type.c_str()));
-        drawAchievements(act.achievement_count);
+        drawHeading(act.name.c_str(), act.achievement_count, iconForSportType(act.type.c_str()));
 
         drawActivityStats(act);
 
@@ -231,7 +263,7 @@ void drawError(const char *message) {
     do {
         display.fillScreen(GxEPD_WHITE);
         display.setTextColor(GxEPD_BLACK);
-        drawHeading("Error:", Icon::Error);
+        drawHeading("Error:", 0, Icon::Error);
         display.setCursor(BODY_START_X, BODY_START_Y);
         printText(message);
     } while (display.nextPage());
