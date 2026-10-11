@@ -24,13 +24,6 @@ static void drawHeading(const char *heading) {
     display.drawLine(HEADING_START_X, lineY, display.width() - HEADING_START_X, lineY, GxEPD_BLACK);
 }
 
-void refreshBody() {
-    display.setPartialWindow(BODY_START_X, BODY_START_Y, display.width() - BODY_START_X,
-                             display.height() - BODY_START_Y);
-    display.fillScreen(GxEPD_WHITE);
-    display.nextPage();
-}
-
 void initDisplay() {
     SPI.end();
     SPI.begin(13, 12, 14, 15);  // SCK=13, MISO=12 (unused), MOSI=14, SS=15
@@ -38,9 +31,12 @@ void initDisplay() {
     display.setRotation(0);
 }
 
-void drawActivity(const String &type, const String &date, float distanceKm) {
+void drawActivity(StravaActivity act) {
     char distance[16];
-    snprintf(distance, sizeof(distance), "%.2f km", distanceKm);
+    snprintf(distance, sizeof(distance), "%.2f km", act.distance_km);
+
+    char title[35];
+    snprintf(title, sizeof(title), "%s: %s", act.type.c_str(), act.name.c_str());
 
     display.setFullWindow();
     display.firstPage();
@@ -48,15 +44,15 @@ void drawActivity(const String &type, const String &date, float distanceKm) {
         display.fillScreen(GxEPD_WHITE);
         display.setTextColor(GxEPD_BLACK);
 
-        drawHeading("Last Activity:");
+        drawHeading(title);
 
         display.setFont(&FreeSansBold24pt7b);
         display.setCursor(BODY_START_X, BODY_START_Y);
-        display.print(type);
+        display.print(act.type);
 
         display.setFont(&FreeSans18pt7b);
         display.setCursor(BODY_START_X, 260);
-        display.print(date);
+        display.print(act.date);
 
         display.setFont(&FreeSansBold24pt7b);
         display.setCursor(BODY_START_X, 380);

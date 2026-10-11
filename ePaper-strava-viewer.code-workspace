@@ -4,5 +4,22 @@
 			"path": "."
 		}
 	],
-	"settings": {}
+	"settings": {
+		// Indentation is defined by .clang-format; don't guess it from file content.
+		"editor.detectIndentation": false,
+		"editor.insertSpaces": true,
+		"editor.tabSize": 4,
+		"files.insertFinalNewline": true,
+		"files.trimTrailingWhitespace": true,
+		"[c][cpp]": {
+			"editor.defaultFormatter": "xaver.clang-format",
+			"editor.formatOnSave": true
+		}
+	},
+	"extensions": {
+		"recommendations": [
+			"platformio.platformio-ide",
+			"xaver.clang-format"
+		]
+	}
 }

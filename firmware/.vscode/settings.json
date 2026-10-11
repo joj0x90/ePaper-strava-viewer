@@ -3,5 +3,16 @@
     // so use its IntelliSense here instead of clangd (disabled globally in user settings).
     "C_Cpp.intelliSenseEngine": "default",
     "C_Cpp.errorSquiggles": "enabled",
-    "clangd.enable": false
+    "clangd.enable": false,
+
+    // Indentation is defined by ../.clang-format; don't guess it from file content.
+    "editor.detectIndentation": false,
+    "editor.insertSpaces": true,
+    "editor.tabSize": 4,
+    "files.insertFinalNewline": true,
+    "files.trimTrailingWhitespace": true,
+    "[c][cpp]": {
+        "editor.defaultFormatter": "xaver.clang-format",
+        "editor.formatOnSave": true
+    }
 }

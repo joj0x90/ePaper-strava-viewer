@@ -31,16 +31,6 @@ static StravaError makeError(StravaErrorCode code, int httpStatus = 0, const Str
     return error;
 }
 
-// "TrailRun" -> "Trail Run"
-static String splitCamelCase(const String &s) {
-    String out;
-    for (size_t i = 0; i < s.length(); i++) {
-        if (i > 0 && isUpperCase(s[i])) out += ' ';
-        out += s[i];
-    }
-    return out;
-}
-
 // "yyyy-mm-ddTHH:MM:ssZ" -> "dd.mm.yyyy HH:mm"
 static String formatDate(const String &iso) {
     if (iso.length() < 16) return iso;
@@ -76,7 +66,7 @@ StravaError fetchAccessToken(const char *clientId, const char *clientSecret,
     return StravaError();
 }
 
-StravaError fetchLastActivity(const String &accessToken, Activity &activity) {
+StravaError fetchLastActivity(const String &accessToken, StravaActivity &activity) {
     initClient();
     HTTPClient http;
     http.begin(client, "https://www.strava.com/api/v3/athlete/activities?per_page=1");
@@ -92,8 +82,20 @@ StravaError fetchLastActivity(const String &accessToken, Activity &activity) {
     // Only keep the fields we need to save memory
     JsonDocument filter;
     filter[0]["sport_type"] = true;
+    filter[0]["name"] = true;
+    filter[0]["description"] = true;
     filter[0]["start_date_local"] = true;
     filter[0]["distance"] = true;
+    filter[0]["map"] = true;
+    filter[0]["moving_time"] = true;
+    filter[0]["total_elevation_gain"] = true;
+    filter[0]["achievement_count"] = true;
+    filter[0]["kudos_count"] = true;
+    filter[0]["comment_count"] = true;
+    filter[0]["device_name"] = true;
+    filter[0]["average_speed"] = true;
+    filter[0]["max_speed"] = true;
+    filter[0]["calories"] = true;
 
     JsonDocument doc;
     DeserializationError err =
@@ -106,8 +108,20 @@ StravaError fetchLastActivity(const String &accessToken, Activity &activity) {
     }
 
     JsonObject a = doc[0];
-    activity.type = splitCamelCase(a["sport_type"].as<String>());
+    activity.type = a["sport_type"].as<String>();
+    activity.name = a["name"].as<String>();
+    activity.description = a["description"].as<String>();
     activity.date = formatDate(a["start_date_local"].as<String>());
-    activity.distanceKm = a["distance"].as<float>() / 1000.0f;
+    activity.distance_km = a["distance"].as<float>() / 1000.0f;
+    activity.showMap = a["map"]["summary_polyline"] | "" != "";
+    activity.moving_time_s = a["moving_time"].as<uint32_t>();
+    activity.total_elev_m = a["total_elevation_gain"].as<float>();
+    activity.achievement_count = a["achievement_count"].as<uint8_t>();
+    activity.kudos_count = a["kudos_count"].as<uint8_t>();
+    activity.comment_count = a["comment_count"].as<uint8_t>();
+    activity.device_name = a["device_name"].as<String>();
+    activity.average_speed = a["average_speed"].as<float>();
+    activity.max_speed = a["max_speed"].as<float>();
+    activity.burned_calories = a["calories"].as<float>();
     return StravaError();
 }

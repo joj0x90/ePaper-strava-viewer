@@ -16,7 +16,7 @@ static void showLastActivity() {
     }
 
     String accessToken;
-    Activity activity;
+    StravaActivity activity;
     StravaError stravaError =
         fetchAccessToken(STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET, STRAVA_REFRESH_TOKEN, accessToken);
     if (stravaError.ok()) {
@@ -30,8 +30,8 @@ static void showLastActivity() {
     }
 
     Serial.printf("%s | %s | %.2f km\n", activity.type.c_str(), activity.date.c_str(),
-                  activity.distanceKm);
-    drawActivity(activity.type, activity.date, activity.distanceKm);
+                  activity.distance_km);
+    drawActivity(activity);
 }
 
 void setup() {

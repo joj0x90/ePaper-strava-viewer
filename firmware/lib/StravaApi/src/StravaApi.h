@@ -3,13 +3,22 @@
 
 #include <Arduino.h>
 
-struct Activity {
-    String type;   // e.g. "Trail Run"
-    String title;  // e.g. "Morning Run"
-    String date;   // e.g. "09.10.2026 07:12"
-    float distanceKm;
+struct StravaActivity {
+    String type;         // e.g. "Trail Run"
+    String name;         // e.g. "Morning Run"
+    String description;  // e.g. "Felt great, sunny weather"
+    String date;         // e.g. "09.10.2026 07:12"
+    float distance_km;
     bool showMap;  // true for most activities, like runs and rides, false for e.g. indoor swims.
-    uint32_t mocing_time_s;  // in seconds
+    uint32_t moving_time_s;     // in seconds
+    float total_elev_m;         // total elevation in meters
+    uint8_t achievement_count;  // number or achievements earned during the activity
+    uint8_t kudos_count;        // number of kudos (likes) received for the activity
+    uint8_t comment_count;      // number of comments received for the activity
+    String device_name;         // name of the device used to record the activity.
+    float average_speed;
+    float max_speed;
+    float burned_calories;
 };
 
 enum class StravaErrorCode : uint8_t {
@@ -35,6 +44,6 @@ struct StravaError {
 StravaError fetchAccessToken(const char *clientId, const char *clientSecret,
                              const char *refreshToken, String &accessToken);
 
-StravaError fetchLastActivity(const String &accessToken, Activity &activity);
+StravaError fetchLastActivity(const String &accessToken, StravaActivity &activity);
 
 #endif  // STRAVA_API_H

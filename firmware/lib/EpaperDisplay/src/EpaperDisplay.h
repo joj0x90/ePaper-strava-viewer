@@ -3,10 +3,12 @@
 
 #include <Arduino.h>
 
+#include "StravaApi.h"
+
 // Sets up SPI and the 7.5" e-paper panel. Call once before drawing.
 void initDisplay();
 
-void drawActivity(const String &type, const String &date, float distanceKm);
+void drawActivity(StravaActivity activity);
 void drawError(const char *message);
 
 // Puts the panel into deep sleep; call initDisplay() again before the next draw.
