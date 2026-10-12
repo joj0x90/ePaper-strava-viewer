@@ -6,7 +6,7 @@
 
 namespace {
 
-const uint8_t COLUMNS = 8;
+const uint8_t COLUMNS = 9;
 const int16_t ICON_SIZE = 48;
 const int16_t CHAR_W = 6, LINE_H = 10;  // built-in 5x7 font at size 1
 
@@ -21,6 +21,11 @@ const ExtraIcon EXTRA_ICONS[] = {
     {Icon::Achievement, "(achievement)"},
     {Icon::Kudos, "(kudos)"},
     {Icon::Comment, "(comment)"},
+    {Icon::AvgSpeed, "(avg speed)"},
+    {Icon::MaxSpeed, "(max speed)"},
+    {Icon::Pace, "(pace)"},
+    {Icon::Calories, "(kcal)"},
+    {Icon::Distance, "(distance)"},
 };
 const uint8_t EXTRA_CELLS = sizeof(EXTRA_ICONS) / sizeof(EXTRA_ICONS[0]);
 

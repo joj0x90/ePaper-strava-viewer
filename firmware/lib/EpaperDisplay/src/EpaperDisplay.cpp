@@ -31,7 +31,7 @@
 #define HEADING_ICON_Y (HEADING_START_Y - 12 - ICON_SIZE / 2)
 
 #define BODY_START_X 20
-#define BODY_START_Y 100
+#define BODY_START_Y 60
 
 #define FOOTER_SIZE_Y 20
 
@@ -236,31 +236,81 @@ static void drawHeading(const char *heading, uint8_t achievements, Icon icon = I
     display.setCursor(heading_start, HEADING_START_Y);
     display.print(fitText(heading, headingEnd - heading_start));
 
-    const int16_t lineY = HEADING_START_Y + 20;
+    const int16_t lineY = HEADING_START_Y + 5;
     display.drawLine(HEADING_START_X, lineY, display.width() - HEADING_START_X, lineY, GxEPD_BLACK);
 }
 
+// Draws icon, text and unit icon in one line, in the current font: the icons are centered
+// vertically on the digits, with TEXTAREA_PADDING between the three. Icon::None as unit leaves
+// it out. Only draws into the buffer, like drawHeading().
+static void drawStatLine(Icon icon, const char *text, Icon unit, int16_t x, int16_t baseline) {
+    int16_t x1, y1;
+    uint16_t w, h;
+    // center on the digit height, so every line is aligned the same, whatever its text
+    display.getTextBounds("0", 0, 0, &x1, &y1, &w, &h);
+    const int16_t iconY = baseline + y1 + h / 2 - ICON_SIZE / 2;  // y1 < 0: top of the digits
+
+    drawIcon(display, icon, x, iconY, ICON_SIZE, GxEPD_BLACK, GxEPD_WHITE);
+
+    const int16_t textX = x + ICON_SIZE + TEXTAREA_PADDING;
+    display.setCursor(textX, baseline);
+    printText(text);
+
+    const int16_t unitX = textX + textWidth(utf8ToLatin1(text)) + TEXTAREA_PADDING;
+    drawIcon(display, unit, unitX, iconY, ICON_SIZE, GxEPD_BLACK, GxEPD_WHITE);
+}
+
+// Converts a speed in m/s (as Strava sends it) to the pace in min/km, formatted as "=m:ss".
+// A speed of 0, e.g. for activities without distance, gives "=-:--".
+template <size_t N>
+static void formatPace(char (&buf)[N], float speedMps) {
+    if (speedMps <= 0) {
+        snprintf(buf, N, "=-:--");
+        return;
+    }
+    const uint32_t secondsPerKm = lroundf(1000 / speedMps);
+    snprintf(buf, N, "=%lu:%02lu", (unsigned long)(secondsPerKm / 60),
+             (unsigned long)(secondsPerKm % 60));
+}
+
 static void drawActivityStats(StravaActivity act) {
-    char distance[16];
+    char pace_max[12];
+    char pace_avg[12];
+    char kcal[6];
+    char distance[11];
+    formatPace(pace_max, act.max_speed);
+    formatPace(pace_avg, act.average_speed);
+    snprintf(kcal, sizeof(kcal), "=%4f", act.burned_calories);
     snprintf(distance, sizeof(distance), "%.2f km", act.distance_km);
 
     display.setFont(&FreeSans12pt8b);
-    display.setCursor(BODY_START_X, BODY_START_Y);
+    display.setCursor(BODY_START_X, BODY_START_Y + 20);
     printText(act.date.c_str());
 
-    display.setCursor(BODY_START_X, BODY_START_Y + 20);
+    display.setCursor(BODY_START_X, BODY_START_Y + 45);
     printText(act.device_name.c_str());
 
     if (!act.description.isEmpty()) {
         const int16_t width = display.width() / 2 - MAP_MARGIN - BODY_START_X;
-        drawTextarea(act.description.c_str(), BODY_START_X, BODY_START_Y + 35, width, 3,
+        drawTextarea(act.description.c_str(), BODY_START_X, BODY_START_Y + 55, width, 3,
                      &FreeSans12pt8b);
     }
 
-    // print distance
     display.setFont(&FreeSans18pt8b);
-    display.setCursor(BODY_START_X, 380);
-    display.print(distance);
+
+    // print pace_max
+    int16_t y = 300;
+    drawStatLine(Icon::MaxSpeed, pace_max, Icon::Pace, BODY_START_X, y);
+
+    // print pace_avg
+    drawStatLine(Icon::AvgSpeed, pace_avg, Icon::Pace, BODY_START_X + display.width() / 4, y);
+
+    y = 350;
+    // print distance with the ruler in front, both centered in the left half
+    drawStatLine(Icon::Distance, distance, Icon::None, BODY_START_X, y);
+
+    // print burned kcal
+    drawStatLine(Icon::Calories, kcal, Icon::None, BODY_START_X + display.width() / 4, y);
 }
 
 // Draws the route, fitted into the right half of the screen below the heading.

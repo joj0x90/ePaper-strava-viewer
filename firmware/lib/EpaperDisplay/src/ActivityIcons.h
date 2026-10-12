@@ -23,6 +23,11 @@ enum class Icon : uint8_t {
     Achievement,  // medal with star, for Strava achievements
     Kudos,        // thumbs up
     Comment,      // speech bubble
+    AvgSpeed,     // s_avg, for the average speed
+    MaxSpeed,     // s_max, for the maximum speed
+    Pace,         // "min" over "km", for the pace
+    Calories,     // flame, for burned kcal
+    Distance,     // ruler scale
 };
 
 // Maps a Strava sport_type (e.g. "TrailRun", "GravelRide") to its icon.

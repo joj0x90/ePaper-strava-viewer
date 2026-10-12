@@ -111,7 +111,7 @@ static void showLastActivity(const Credentials &credentials, const String &notic
                          credentials.stravaRefreshToken.c_str(), accessToken);
     if (stravaError.ok()) {
         stravaError = fetchLastActivity(accessToken, activity);
-        // stravaError = fetchActivityById(accessToken, 19572817451, activity);
+        // stravaError = fetchActivityById(accessToken, 20351131615, activity);
     }
     if (!stravaError.ok()) {
         Serial.printf("Strava error %d (HTTP %d): %s\n%s\n", static_cast<int>(stravaError.code),

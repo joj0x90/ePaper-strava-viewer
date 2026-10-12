@@ -340,6 +340,115 @@ void drawSpeechBubble(Painter &p) {
     p.tri(8, 27, 18, 27, 6, 37);
 }
 
+// Arc of a circle from angle a0 to a1 (radians, 0 = right, clockwise as y points down).
+void drawArc(Painter &p, float cx, float cy, float r, float a0, float a1, float width) {
+    const uint8_t steps = 16;
+    float prevX = cx + cosf(a0) * r, prevY = cy + sinf(a0) * r;
+    for (uint8_t i = 1; i <= steps; i++) {
+        float a = a0 + (a1 - a0) * i / steps;
+        float x = cx + cosf(a) * r, y = cy + sinf(a) * r;
+        p.line(prevX, prevY, x, y, width);
+        prevX = x;
+        prevY = y;
+    }
+}
+
+// Lowercase letters drawn as strokes, so they scale with the icon. (x, y) is the left end of
+// the baseline, h the x-height; m and n also need the stroke width w.
+void drawLetterM(Painter &p, float x, float y, float h, float w) {
+    const float r = h * 0.3f, pi = (float)M_PI;
+    p.line(x, y - h, x, y, w);
+    for (uint8_t i = 0; i < 2; i++) {
+        const float cx = x + r + 2 * r * i;
+        drawArc(p, cx, y - h + r, r, pi, 2 * pi, w);
+        p.line(cx + r, y - h + r, cx + r, y, w);
+    }
+}
+
+void drawLetterN(Painter &p, float x, float y, float h, float r, float w) {
+    p.line(x, y - h, x, y, w);
+    drawArc(p, x + r, y - h + r, r, (float)M_PI, 2 * (float)M_PI, w);
+    p.line(x + 2 * r, y - h + r, x + 2 * r, y, w);
+}
+
+// Lowercase s with x-height 16 and baseline 27, for s_{avg} and s_{max}; the subscript goes
+// right of it with x-height 7 and baseline 34.
+void drawLetterS(Painter &p) {
+    const float pi = (float)M_PI;
+    drawArc(p, 8, 15, 4, -pi / 6, -1.5f * pi, 3);
+    drawArc(p, 8, 23, 4, -pi / 2, pi * 5 / 6, 3);
+}
+
+// Letter a of the subscript, with its bowl centered at cx.
+void drawSubscriptA(Painter &p, float cx, float w) {
+    const float r = 3.5f;  // outer radius of the bowl
+    p.ring(cx, 30.5f, r, w);
+    p.line(cx + r - w / 2, 27, cx + r - w / 2, 34, w);
+}
+
+// s_{avg}: average speed, like in LaTeX.
+void drawAvgSpeed(Painter &p) {
+    const float pi = (float)M_PI, w = 2, r = 3.5f;
+    drawLetterS(p);
+    drawSubscriptA(p, 16.5f, w);
+    p.line(22.5f, 27, 25.5f, 34, w);  // v
+    p.line(25.5f, 34, 28.5f, 27, w);
+    p.ring(33, 30.5f, r, w);  // g
+    p.line(33 + r - w / 2, 27, 33 + r - w / 2, 36, w);
+    drawArc(p, 33, 36, r - w / 2, 0, pi * 0.9f, w);
+}
+
+// s_{max}: maximum speed, like in LaTeX.
+void drawMaxSpeed(Painter &p) {
+    const float w = 2;
+    drawLetterS(p);
+    drawLetterM(p, 14.5f, 34, 7, w);
+    drawSubscriptA(p, 28, w);
+    p.line(33.5f, 27, 38.5f, 34, w);  // x
+    p.line(38.5f, 27, 33.5f, 34, w);
+}
+
+// min over km, like a fraction.
+void drawPace(Painter &p) {
+    const float w = 2.5f;
+    // min, x-height 9, baseline 14
+    drawLetterM(p, 4.5f, 14, 9, w);
+    p.line(21, 8, 21, 14, w);  // i
+    p.circle(21, 3, 1.7f);
+    drawLetterN(p, 25.5f, 14, 9, 4, w);
+
+    p.line(3, 20, 37, 20, w);
+
+    // km, x-height 9, baseline 36
+    p.line(7, 23, 7, 36, w);  // k
+    p.line(14, 27, 7.5f, 32.5f, w);
+    p.line(10, 30.5f, 14.5f, 36, w);
+    drawLetterM(p, 19, 36, 9, w);
+}
+
+// Scale of a ruler: baseline with long, medium and short tick marks.
+void drawRuler(Painter &p) {
+    // rectangles instead of lines: square ends without the bumps of round caps
+    p.rect(2, 27, 36, 2.5f, 0);
+    for (uint8_t i = 0; i < 9; i++) {
+        const float x = 2 + i * 4.25f;
+        const float top = i % 4 == 0 ? 12 : i % 2 == 0 ? 18 : 22;
+        p.rect(x, top, 2, 28 - top, 0);
+    }
+}
+
+// Flame with an inner flame cut out.
+void drawFlame(Painter &p) {
+    const float outer[] = {21, 1, 28, 9, 32, 17, 33, 26, 7, 26, 7, 18, 10, 9, 14, 15};
+    p.polygon(outer, 8, 20, 20);
+    p.circle(20, 26, 13);
+    p.cut(true);
+    const float inner[] = {20, 17, 25, 25, 26, 31, 14, 31, 15, 25};
+    p.polygon(inner, 5, 20, 27);
+    p.circle(20, 31, 6);
+    p.cut(false);
+}
+
 }  // namespace
 
 uint8_t sportTypeCount() {
@@ -383,5 +492,10 @@ void drawIcon(Adafruit_GFX &gfx, Icon icon, int16_t x, int16_t y, int16_t size, 
         case Icon::Achievement:   drawMedal(p); break;
         case Icon::Kudos:         drawThumbsUp(p); break;
         case Icon::Comment:       drawSpeechBubble(p); break;
+        case Icon::AvgSpeed:      drawAvgSpeed(p); break;
+        case Icon::MaxSpeed:      drawMaxSpeed(p); break;
+        case Icon::Pace:          drawPace(p); break;
+        case Icon::Calories:      drawFlame(p); break;
+        case Icon::Distance:      drawRuler(p); break;
     }
 }
