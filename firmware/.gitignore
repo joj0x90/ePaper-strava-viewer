@@ -3,3 +3,6 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
+
+# just a manual lookup-table for strava-identifiers of specific routes.
+strava-routes.txt

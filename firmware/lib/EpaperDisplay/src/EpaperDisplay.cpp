@@ -358,22 +358,16 @@ static void drawCountBadge(Icon icon, const char *count, int16_t centerX) {
 }
 
 static void drawKudosComments(uint8_t kudos, uint8_t comments) {
-    kudos = 150;
-    comments = 120;
     // we will display at most 99+
     char count[4];
 
-    if (kudos > 0) {
-        // kudos at 1/3 of the left half
-        formatCount(count, kudos);
-        drawCountBadge(Icon::Kudos, count, display.width() / 2 / 3);
-    }
+    // kudos at 1/3 of the left half
+    formatCount(count, kudos);
+    drawCountBadge(Icon::Kudos, count, display.width() / 2 / 3);
 
-    if (comments > 0) {
-        // comments at 2/3 of the left half
-        formatCount(count, comments);
-        drawCountBadge(Icon::Comment, count, display.width() / 2 * 2 / 3);
-    }
+    // comments at 2/3 of the left half
+    formatCount(count, comments);
+    drawCountBadge(Icon::Comment, count, display.width() / 2 * 2 / 3);
 }
 
 void drawActivity(StravaActivity act) {

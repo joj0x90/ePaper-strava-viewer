@@ -64,12 +64,7 @@ static void showLastActivity() {
         fetchAccessToken(STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET, STRAVA_REFRESH_TOKEN, accessToken);
     if (stravaError.ok()) {
         // stravaError = fetchLastActivity(accessToken, activity);
-        // Marathon -> 20448162500
-        // Kiel-Fahrt -> 19572817451
-        // Marathon-Pace-Laf mit Doro -> 20351131615
-        // Fahrrad von Dresden -> 20255126553
-        // Schwimmkurs 03 -> 20301115286
-        stravaError = fetchActivityById(accessToken, 20448162500, activity);
+        stravaError = fetchActivityById(accessToken, 19572817451, activity);
     }
     if (!stravaError.ok()) {
         Serial.printf("Strava error %d (HTTP %d): %s\n%s\n", static_cast<int>(stravaError.code),
