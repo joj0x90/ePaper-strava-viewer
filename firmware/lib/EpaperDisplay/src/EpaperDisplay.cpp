@@ -11,7 +11,9 @@
 #include "fonts/FreeSans18pt8b.h"
 #include "fonts/FreeSansBold24pt8b.h"
 
-#define VERSION "v0.0.4"
+#ifndef FIRMWARE_VERSION
+#define FIRMWARE_VERSION "dev"  // set by tools/version.py
+#endif
 
 #define HEADING_START_X 10
 #define HEADING_START_Y 40
@@ -318,9 +320,9 @@ static void drawFooter() {
     // center the text horizontally, whatever its length
     int16_t x1, y1;
     uint16_t w, h;
-    display.getTextBounds(VERSION, 0, y, &x1, &y1, &w, &h);
+    display.getTextBounds(FIRMWARE_VERSION, 0, y, &x1, &y1, &w, &h);
     display.setCursor((display.width() - w) / 2 - x1, y);
-    printText(VERSION);
+    printText(FIRMWARE_VERSION);
 }
 
 static void formatCount(char (&buf)[4], uint16_t count) {

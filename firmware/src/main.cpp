@@ -2,8 +2,11 @@
 #include <Preferences.h>
 #include <esp_ota_ops.h>
 
+#if __has_include("secrets.h")
 #include "secrets.h"
+#endif
 #include "EpaperDisplay.h"
+#include "OtaUpdate.h"
 #include "SleepSchedule.h"
 #include "StravaApi.h"
 #include "WifiConnect.h"
@@ -22,6 +25,37 @@ static const uint32_t FALLBACK_SLEEP_S = 3600;
 static const char *PREFS_NAMESPACE = "display";
 static const char *PREFS_SHOWN_ID = "shownId";
 static const char *PREFS_SHOWN_FIRMWARE = "shownFw";
+
+// WiFi and Strava credentials, kept in NVS: the release builds from CI are public and contain
+// none. A local build with include/secrets.h stores them on boot, so flash one once via USB.
+static const char *PREFS_CREDENTIALS = "credentials";
+
+struct Credentials {
+    String wifiSsid, wifiPassword;
+    String stravaClientId, stravaClientSecret, stravaRefreshToken;
+};
+
+static Credentials loadCredentials() {
+    Preferences prefs;
+#if __has_include("secrets.h")
+    prefs.begin(PREFS_CREDENTIALS, false);
+    prefs.putString("wifiSsid", WIFI_SSID);
+    prefs.putString("wifiPassword", WIFI_PASSWORD);
+    prefs.putString("clientId", STRAVA_CLIENT_ID);
+    prefs.putString("clientSecret", STRAVA_CLIENT_SECRET);
+    prefs.putString("refreshToken", STRAVA_REFRESH_TOKEN);
+#else
+    prefs.begin(PREFS_CREDENTIALS, true);  // fails if never provisioned: all strings stay empty
+#endif
+    Credentials c;
+    c.wifiSsid = prefs.getString("wifiSsid");
+    c.wifiPassword = prefs.getString("wifiPassword");
+    c.stravaClientId = prefs.getString("clientId");
+    c.stravaClientSecret = prefs.getString("clientSecret");
+    c.stravaRefreshToken = prefs.getString("refreshToken");
+    prefs.end();
+    return c;
+}
 
 // Hash of the running firmware, changes with every build that changes the code
 static String firmwareHash() {
@@ -57,11 +91,12 @@ static void showError(const char *message) {
 
 // Loads the latest activity and draws it if it isn't on the display already,
 // or draws the error that occurred. Needs WiFi.
-static void showLastActivity() {
+static void showLastActivity(const Credentials &credentials) {
     String accessToken;
     StravaActivity activity;
     StravaError stravaError =
-        fetchAccessToken(STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET, STRAVA_REFRESH_TOKEN, accessToken);
+        fetchAccessToken(credentials.stravaClientId.c_str(), credentials.stravaClientSecret.c_str(),
+                         credentials.stravaRefreshToken.c_str(), accessToken);
     if (stravaError.ok()) {
         // stravaError = fetchLastActivity(accessToken, activity);
         stravaError = fetchActivityById(accessToken, 19572817451, activity);
@@ -96,7 +131,15 @@ void setup() {
     Serial.begin(115200);
     printLocalTime(wokeFromDeepSleep() ? "Woke up at" : "Started at");
 
-    WifiError wifiError = connectWifi(WIFI_SSID, WIFI_PASSWORD);
+    const Credentials credentials = loadCredentials();
+    if (credentials.wifiSsid.isEmpty()) {
+        Serial.println("No credentials in NVS, flash a build with include/secrets.h once via USB");
+        showError("No credentials, flash once via USB");
+        sleepUntilNextFullHour();
+    }
+
+    WifiError wifiError =
+        connectWifi(credentials.wifiSsid.c_str(), credentials.wifiPassword.c_str());
     if (!wifiError.ok()) {
         Serial.printf("WiFi error %d (status %d): %s\n", static_cast<int>(wifiError.code),
                       wifiError.status, wifiError.message());
@@ -110,9 +153,12 @@ void setup() {
         printLocalTime("Woke up too early, it's");
         sleepUntilNextFullHour();
     }
+    // before the display, so a release that breaks drawing can still be replaced
+    updateFirmwareIfAvailable();
+
     printLocalTime("Refreshing at");
 
-    showLastActivity();
+    showLastActivity(credentials);
     sleepUntilNextFullHour();
 }
 

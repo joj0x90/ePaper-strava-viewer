@@ -1,0 +1,53 @@
+name: Firmware
+
+# Builds the firmware on every push and pull request. Pushing a tag like "v0.1.0" also
+# publishes a GitHub release with firmware.bin, which the devices install via OTA.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: write  # create releases
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: firmware
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # tags for `git describe` in tools/version.py
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            firmware/.pio/libdeps
+          key: pio-${{ hashFiles('firmware/platformio.ini') }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install platformio
+
+      # without include/secrets.h: the credentials come from the device's NVS
+      - name: Build
+        run: pio run -e esp32dev -e icon-test
+        env:
+          FIRMWARE_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: firmware/.pio/build/esp32dev/firmware.bin
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: gh release create "$GITHUB_REF_NAME" .pio/build/esp32dev/firmware.bin --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
