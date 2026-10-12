@@ -184,8 +184,6 @@ The numbers are the values of `WifiErrorCode` (`firmware/lib/WifiConnect/src/Wif
 
 | Problem | Fix |
 | --- | --- |
-| Red squiggles in VS Code (`Arduino.h` not found etc.) although the build works | Open the `firmware/` folder in VS Code. Code analysis must come from the Microsoft C/C++ extension (`ms-vscode.cpptools`), which reads PlatformIO's generated `c_cpp_properties.json`. `firmware/.vscode/settings.json` enables it and disables clangd for this project. Then run *PlatformIO: Rebuild IntelliSense Index* |
-| No serial port shows up | Use a data USB cable; check the CP2102 driver and your user's group membership (`uucp`/`dialout`) |
 | `Permission denied: /dev/ttyUSB0` | Add your user to the serial group (see above) and log in again |
 | Display stays white or shows noise | Check that the ribbon cable is seated properly; toggle the Display Config switch between A and B; make sure you use `GxEPD2_750_T7` (V2) and not `GxEPD2_750` (V1) |
 | Display is stuck in "busy" (timeout in the log) | Wrong pins: check the BUSY/RST pin mapping and the `SPI.begin(13, 12, 14, 15)` remap |
