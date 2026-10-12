@@ -313,16 +313,24 @@ static void drawActivityMap(const String &polyline) {
     }
 }
 
-static void drawFooter() {
+// Firmware version, followed by the notice if there is one, e.g. a failed update.
+static void drawFooter(const char *notice = "") {
     display.setFont(&FreeSans12pt8b);
     const int16_t y = display.height() - (FOOTER_SIZE_Y / 2);
+
+    String text = FIRMWARE_VERSION;
+    if (notice[0] != '\0') {
+        text += " | ";
+        text += notice;
+    }
+    const String fitted = fitText(text.c_str(), display.width() - 2 * HEADING_START_X);
 
     // center the text horizontally, whatever its length
     int16_t x1, y1;
     uint16_t w, h;
-    display.getTextBounds(FIRMWARE_VERSION, 0, y, &x1, &y1, &w, &h);
+    display.getTextBounds(fitted, 0, y, &x1, &y1, &w, &h);
     display.setCursor((display.width() - w) / 2 - x1, y);
-    printText(FIRMWARE_VERSION);
+    display.print(fitted);
 }
 
 static void formatCount(char (&buf)[4], uint16_t count) {
@@ -372,7 +380,7 @@ static void drawKudosComments(uint8_t kudos, uint8_t comments) {
     drawCountBadge(Icon::Comment, count, display.width() / 2 * 2 / 3);
 }
 
-void drawActivity(StravaActivity act) {
+void drawActivity(StravaActivity act, const char *footerNotice) {
     display.setFullWindow();
     display.firstPage();
     do {
@@ -392,7 +400,7 @@ void drawActivity(StravaActivity act) {
 
         drawKudosComments(act.kudos_count, act.comment_count);
 
-        drawFooter();
+        drawFooter(footerNotice);
 
     } while (display.nextPage());
 }
@@ -406,6 +414,25 @@ void drawError(const char *message) {
         drawHeading("Error:", 0, Icon::Error);
         display.setCursor(BODY_START_X, BODY_START_Y);
         printText(message);
+    } while (display.nextPage());
+}
+
+void drawUpdate(const char *fromVersion, const char *toVersion) {
+    display.setFullWindow();
+    display.firstPage();
+    do {
+        display.fillScreen(GxEPD_WHITE);
+        display.setTextColor(GxEPD_BLACK);
+        drawHeading("Updating firmware", 0, Icon::None);
+        display.setFont(&FreeSans18pt8b);
+        display.setCursor(BODY_START_X, BODY_START_Y);
+        printText((String(fromVersion) + " -> " + toVersion).c_str());
+        display.setFont(&FreeSans12pt8b);
+        display.setCursor(BODY_START_X, BODY_START_Y + 50);
+        printText("Downloading the new firmware, this can take a minute.");
+        display.setCursor(BODY_START_X, BODY_START_Y + 80);
+        printText("The latest activity will be shown afterwards.");
+        drawFooter();
     } while (display.nextPage());
 }
 

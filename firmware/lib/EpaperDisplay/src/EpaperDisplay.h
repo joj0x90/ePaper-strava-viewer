@@ -8,8 +8,11 @@
 // Sets up SPI and the 7.5" e-paper panel. Call once before drawing.
 void initDisplay();
 
-void drawActivity(StravaActivity activity);
+// footerNotice is shown next to the firmware version, e.g. a failed update.
+void drawActivity(StravaActivity activity, const char *footerNotice = "");
 void drawError(const char *message);
+// Shown while a new firmware is downloaded, which delays the activity.
+void drawUpdate(const char *fromVersion, const char *toVersion);
 
 // Test screen with every sport type, its icon and its name.
 void drawIconOverviewScreen();

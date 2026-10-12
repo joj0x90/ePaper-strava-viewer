@@ -25,6 +25,7 @@ static const uint32_t FALLBACK_SLEEP_S = 3600;
 static const char *PREFS_NAMESPACE = "display";
 static const char *PREFS_SHOWN_ID = "shownId";
 static const char *PREFS_SHOWN_FIRMWARE = "shownFw";
+static const char *PREFS_SHOWN_NOTICE = "shownNotice";
 
 // WiFi and Strava credentials, kept in NVS: the release builds from CI are public and contain
 // none. A local build with include/secrets.h stores them on boot, so flash one once via USB.
@@ -64,20 +65,22 @@ static String firmwareHash() {
     return hash;
 }
 
-static bool isAlreadyShown(uint64_t activityId) {
+static bool isAlreadyShown(uint64_t activityId, const String &notice) {
     Preferences prefs;
     if (!prefs.begin(PREFS_NAMESPACE, true)) return false;  // namespace doesn't exist yet
     bool shown = prefs.getULong64(PREFS_SHOWN_ID, 0) == activityId &&
-                 prefs.getString(PREFS_SHOWN_FIRMWARE) == firmwareHash();
+                 prefs.getString(PREFS_SHOWN_FIRMWARE) == firmwareHash() &&
+                 prefs.getString(PREFS_SHOWN_NOTICE) == notice;
     prefs.end();
     return shown;
 }
 
-static void saveShownActivityId(uint64_t id) {
+static void saveShownActivityId(uint64_t id, const String &notice = "") {
     Preferences prefs;
     prefs.begin(PREFS_NAMESPACE, false);
     prefs.putULong64(PREFS_SHOWN_ID, id);
     prefs.putString(PREFS_SHOWN_FIRMWARE, firmwareHash());
+    prefs.putString(PREFS_SHOWN_NOTICE, notice);
     prefs.end();
 }
 
@@ -89,17 +92,26 @@ static void showError(const char *message) {
     saveShownActivityId(0);
 }
 
-// Loads the latest activity and draws it if it isn't on the display already,
-// or draws the error that occurred. Needs WiFi.
-static void showLastActivity(const Credentials &credentials) {
+// Tells the user why the activity takes longer; it replaces the activity, so the activity is
+// drawn again if the update fails.
+static void showUpdating(const char *newVersion) {
+    initDisplay();
+    drawUpdate(FIRMWARE_VERSION, newVersion);
+    hibernateDisplay();
+    saveShownActivityId(0);
+}
+
+// Loads the latest activity and draws it with the footer notice if it isn't on the display
+// already, or draws the error that occurred. Needs WiFi.
+static void showLastActivity(const Credentials &credentials, const String &notice) {
     String accessToken;
     StravaActivity activity;
     StravaError stravaError =
         fetchAccessToken(credentials.stravaClientId.c_str(), credentials.stravaClientSecret.c_str(),
                          credentials.stravaRefreshToken.c_str(), accessToken);
     if (stravaError.ok()) {
-        // stravaError = fetchLastActivity(accessToken, activity);
-        stravaError = fetchActivityById(accessToken, 19572817451, activity);
+        stravaError = fetchLastActivity(accessToken, activity);
+        // stravaError = fetchActivityById(accessToken, 19572817451, activity);
     }
     if (!stravaError.ok()) {
         Serial.printf("Strava error %d (HTTP %d): %s\n%s\n", static_cast<int>(stravaError.code),
@@ -111,15 +123,15 @@ static void showLastActivity(const Credentials &credentials) {
     Serial.printf("%llu | %s | %s | %s | %.2f km\n", (unsigned long long)activity.id,
                   activity.name.c_str(), activity.type.c_str(), activity.date.c_str(),
                   activity.distance_km);
-    if (isAlreadyShown(activity.id)) {
+    if (isAlreadyShown(activity.id, notice)) {
         Serial.println("Activity is already shown by this firmware, not refreshing the display");
         return;
     }
 
     initDisplay();
-    drawActivity(activity);
+    drawActivity(activity, notice.c_str());
     hibernateDisplay();
-    saveShownActivityId(activity.id);
+    saveShownActivityId(activity.id, notice);
 }
 
 [[noreturn]] static void sleepUntilNextFullHour() {
@@ -154,11 +166,12 @@ void setup() {
         sleepUntilNextFullHour();
     }
     // before the display, so a release that breaks drawing can still be replaced
-    updateFirmwareIfAvailable();
+    const String updateError = updateFirmwareIfAvailable(showUpdating);
+    const String notice = updateError.isEmpty() ? "" : "Update failed: " + updateError;
 
     printLocalTime("Refreshing at");
 
-    showLastActivity(credentials);
+    showLastActivity(credentials, notice);
     sleepUntilNextFullHour();
 }
 
