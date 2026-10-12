@@ -19,6 +19,8 @@ const ExtraIcon EXTRA_ICONS[] = {
     {Icon::Generic, "(other)"},
     {Icon::Error, "(error)"},
     {Icon::Achievement, "(achievement)"},
+    {Icon::Kudos, "(kudos)"},
+    {Icon::Comment, "(comment)"},
 };
 const uint8_t EXTRA_CELLS = sizeof(EXTRA_ICONS) / sizeof(EXTRA_ICONS[0]);
 

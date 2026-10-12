@@ -4,8 +4,8 @@
 #include <Adafruit_GFX.h>
 
 // Draws a grid over the whole canvas: every mapped Strava sport type with its
-// icon and name, then the icons without a sport type: fallback ("(other)"), error
-// and achievement.
+// icon and name, then the icons without a sport type: fallback ("(other)"), error,
+// achievement, kudos and comment.
 // Used by the icon-test firmware and the PC preview in tools/icon_overview.
 void drawIconOverview(Adafruit_GFX &gfx, uint16_t color, uint16_t background);
 

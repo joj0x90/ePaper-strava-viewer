@@ -21,6 +21,8 @@ enum class Icon : uint8_t {
     Weights,
     Generic,      // stopwatch, for every sport type without its own icon
     Achievement,  // medal with star, for Strava achievements
+    Kudos,        // thumbs up
+    Comment,      // speech bubble
 };
 
 // Maps a Strava sport_type (e.g. "TrailRun", "GravelRide") to its icon.

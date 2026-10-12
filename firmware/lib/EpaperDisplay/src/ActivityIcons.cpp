@@ -320,6 +320,26 @@ void drawMedal(Painter &p) {
     p.polygon(star, 10, 20, 27.5f);
 }
 
+// Thumbs up: cuff on the left, fist with the thumb pointing up.
+void drawThumbsUp(Painter &p) {
+    p.rect(2, 17, 7, 21, 1.5f);  // cuff
+    p.rect(11, 17, 14, 21, 3);   // back of the hand
+    const float thumb[] = {11, 18, 15, 9, 17, 3, 22, 3, 22, 10, 21, 17};
+    p.polygon(thumb, 6, 17, 12);
+    p.circle(19.5f, 4.5f, 2.5f);
+    // fingers, getting shorter towards the bottom
+    p.rect(19, 15, 19, 6, 3);
+    p.rect(19, 21, 18, 6, 3);
+    p.rect(19, 27, 17, 5.5f, 2.75f);
+    p.rect(19, 32.5f, 15, 5.5f, 2.75f);
+}
+
+// Speech bubble with a tail at the bottom left.
+void drawSpeechBubble(Painter &p) {
+    p.rect(1, 3, 38, 26, 6);
+    p.tri(8, 27, 18, 27, 6, 37);
+}
+
 }  // namespace
 
 uint8_t sportTypeCount() {
@@ -361,5 +381,7 @@ void drawIcon(Adafruit_GFX &gfx, Icon icon, int16_t x, int16_t y, int16_t size, 
         case Icon::Weights:       drawDumbbell(p); break;
         case Icon::Generic:       drawStopwatch(p); break;
         case Icon::Achievement:   drawMedal(p); break;
+        case Icon::Kudos:         drawThumbsUp(p); break;
+        case Icon::Comment:       drawSpeechBubble(p); break;
     }
 }

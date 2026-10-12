@@ -11,16 +11,22 @@
 #include "fonts/FreeSans18pt8b.h"
 #include "fonts/FreeSansBold24pt8b.h"
 
-#define VERSION "v0.0.3"
+#define VERSION "v0.0.4"
 
 #define HEADING_START_X 10
 #define HEADING_START_Y 40
 
-#define HEADING_ICON_SIZE 40
+#define ICON_SIZE 40
 #define HEADING_ICON_GAP 12
 
+// Border around the kudos and comment count with its icon
+#define BADGE_PADDING 8
+#define BADGE_GAP 8
+#define BADGE_BORDER 2
+#define BADGE_RADIUS 8
+
 // Icons centered on the cap height of the heading font (~25 px)
-#define HEADING_ICON_Y (HEADING_START_Y - 12 - HEADING_ICON_SIZE / 2)
+#define HEADING_ICON_Y (HEADING_START_Y - 12 - ICON_SIZE / 2)
 
 #define BODY_START_X 20
 #define BODY_START_Y 100
@@ -78,8 +84,14 @@ static String utf8ToLatin1(const char *utf8) {
     return out;
 }
 
-static void printText(const char *utf8) {
+static void printText(const char *utf8, uint16_t font_color = GxEPD_BLACK) {
+    if (font_color != GxEPD_BLACK) {
+        display.setTextColor(font_color);
+    }
     display.print(utf8ToLatin1(utf8));
+    if (font_color != GxEPD_BLACK) {
+        display.setTextColor(GxEPD_BLACK);
+    }
 }
 
 // Width from the cursor to the right end of the Latin-1 text, in the current font
@@ -190,8 +202,8 @@ static int16_t drawAchievements(uint8_t achievements) {
     const int16_t rightEnd = display.width() - HEADING_START_X;
     if (achievements == 0) return rightEnd;
 
-    const int16_t iconX = rightEnd - HEADING_ICON_SIZE;
-    drawIcon(display, Icon::Achievement, iconX, HEADING_ICON_Y, HEADING_ICON_SIZE, GxEPD_BLACK,
+    const int16_t iconX = rightEnd - ICON_SIZE;
+    drawIcon(display, Icon::Achievement, iconX, HEADING_ICON_Y, ICON_SIZE, GxEPD_BLACK,
              GxEPD_WHITE);
 
     // you can probably only get max. 99 achievements
@@ -212,14 +224,13 @@ static int16_t drawAchievements(uint8_t achievements) {
 // Only draws into the buffer; call inside a firstPage()/nextPage() loop and never
 // change the window here, that would clip everything drawn in the same loop.
 static void drawHeading(const char *heading, uint8_t achievements, Icon icon = Icon::None) {
-    drawIcon(display, icon, HEADING_START_X, HEADING_ICON_Y, HEADING_ICON_SIZE, GxEPD_BLACK,
-             GxEPD_WHITE);
+    drawIcon(display, icon, HEADING_START_X, HEADING_ICON_Y, ICON_SIZE, GxEPD_BLACK, GxEPD_WHITE);
 
     const int16_t headingEnd = drawAchievements(achievements) - HEADING_ICON_GAP;
 
     // the heading gets the space between the icon and the achievements, cut with "..."
     display.setFont(&FreeSans18pt8b);
-    const int16_t heading_start = HEADING_START_X + HEADING_ICON_SIZE + HEADING_ICON_GAP;
+    const int16_t heading_start = HEADING_START_X + ICON_SIZE + HEADING_ICON_GAP;
     display.setCursor(heading_start, HEADING_START_Y);
     display.print(fitText(heading, headingEnd - heading_start));
 
@@ -312,6 +323,59 @@ static void drawFooter() {
     printText(VERSION);
 }
 
+static void formatCount(char (&buf)[4], uint16_t count) {
+    if (count > 99) {
+        strcpy(buf, "99+");
+    } else {
+        snprintf(buf, sizeof(buf), "%u", count);
+    }
+}
+
+// Draws the count in black left of the icon, with a rounded border around both,
+// centered horizontally on centerX and resting on the footer.
+static void drawCountBadge(Icon icon, const char *count, int16_t centerX) {
+    display.setFont(&FreeSans12pt8b);
+    int16_t x1, y1;
+    uint16_t w, h;
+    display.getTextBounds(count, 0, 0, &x1, &y1, &w, &h);
+
+    const int16_t boxW = BADGE_PADDING + w + BADGE_GAP + ICON_SIZE + BADGE_PADDING;
+    const int16_t boxH = BADGE_PADDING + ICON_SIZE + BADGE_PADDING;
+    const int16_t boxX = centerX - boxW / 2;
+    const int16_t boxY = display.height() - FOOTER_SIZE_Y * 2 - boxH;
+    for (int16_t i = 0; i < BADGE_BORDER; i++) {
+        display.drawRoundRect(boxX + i, boxY + i, boxW - 2 * i, boxH - 2 * i, BADGE_RADIUS - i,
+                              GxEPD_BLACK);
+    }
+
+    // x1/y1 are the offsets from the cursor to the text's top left corner (y1 < 0)
+    const int16_t iconY = boxY + BADGE_PADDING;
+    display.setCursor(boxX + BADGE_PADDING - x1, iconY + ICON_SIZE / 2 - h / 2 - y1);
+    printText(count);
+
+    const int16_t iconX = boxX + BADGE_PADDING + w + BADGE_GAP;
+    drawIcon(display, icon, iconX, iconY, ICON_SIZE, GxEPD_BLACK, GxEPD_WHITE);
+}
+
+static void drawKudosComments(uint8_t kudos, uint8_t comments) {
+    kudos = 150;
+    comments = 120;
+    // we will display at most 99+
+    char count[4];
+
+    if (kudos > 0) {
+        // kudos at 1/3 of the left half
+        formatCount(count, kudos);
+        drawCountBadge(Icon::Kudos, count, display.width() / 2 / 3);
+    }
+
+    if (comments > 0) {
+        // comments at 2/3 of the left half
+        formatCount(count, comments);
+        drawCountBadge(Icon::Comment, count, display.width() / 2 * 2 / 3);
+    }
+}
+
 void drawActivity(StravaActivity act) {
     display.setFullWindow();
     display.firstPage();
@@ -329,6 +393,8 @@ void drawActivity(StravaActivity act) {
 
             drawActivityMap(act.map);
         }
+
+        drawKudosComments(act.kudos_count, act.comment_count);
 
         drawFooter();
 
