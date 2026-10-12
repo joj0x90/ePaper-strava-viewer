@@ -63,8 +63,8 @@ static void showLastActivity() {
     StravaError stravaError =
         fetchAccessToken(STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET, STRAVA_REFRESH_TOKEN, accessToken);
     if (stravaError.ok()) {
-        // stravaError = fetchLastActivity(accessToken, activity);
-        stravaError = fetchActivityById(accessToken, 20101409938, activity);
+        stravaError = fetchLastActivity(accessToken, activity);
+        // stravaError = fetchActivityById(accessToken, 19572817451, activity);
     }
     if (!stravaError.ok()) {
         Serial.printf("Strava error %d (HTTP %d): %s\n%s\n", static_cast<int>(stravaError.code),

@@ -11,9 +11,9 @@
 #include "fonts/FreeSans18pt8b.h"
 #include "fonts/FreeSansBold24pt8b.h"
 
-#define VERSION "v0.0.1"
+#define VERSION "v0.0.3"
 
-#define HEADING_START_X 20
+#define HEADING_START_X 10
 #define HEADING_START_Y 40
 
 #define HEADING_ICON_SIZE 40
@@ -22,13 +22,15 @@
 // Icons centered on the cap height of the heading font (~25 px)
 #define HEADING_ICON_Y (HEADING_START_Y - 12 - HEADING_ICON_SIZE / 2)
 
-#define BODY_START_X 40
+#define BODY_START_X 20
 #define BODY_START_Y 100
 
 #define FOOTER_SIZE_Y 20
 
 #define MAP_MARGIN 20
 #define MAP_LINE_WIDTH 3
+
+#define TEXTAREA_PADDING 8
 
 // CS=15, DC=27, RST=26, BUSY=25
 static GxEPD2_BW<GxEPD2_750_T7, GxEPD2_750_T7::HEIGHT> display(GxEPD2_750_T7(15, 27, 26, 25));
@@ -80,28 +82,105 @@ static void printText(const char *utf8) {
     display.print(utf8ToLatin1(utf8));
 }
 
-// Width from the cursor to the right end of the text, in the current font
+// Width from the cursor to the right end of the Latin-1 text, in the current font
 static int16_t textWidth(const String &text) {
     int16_t x1, y1;
     uint16_t w, h;
+    display.setTextWrap(false);  // otherwise long text is measured as wrapped at the screen edge
     display.getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
+    display.setTextWrap(true);  // Adafruit GFX default
     return x1 + w;
+}
+
+// Cuts the Latin-1 text so that it fits into maxWidth with "..." appended, if it's too wide.
+// With force, "..." is appended even if the text fits, e.g. because more text follows.
+static String ellipsize(String text, int16_t maxWidth, bool force = false) {
+    if (!force && textWidth(text) <= maxWidth) return text;
+    while (!text.isEmpty() && textWidth(text + "...") > maxWidth) {
+        text.remove(text.length() - 1);
+    }
+    while (text.endsWith(" ")) text.remove(text.length() - 1);
+    return text + "...";
 }
 
 // Converts the text to Latin-1 like printText() and, if it's wider than maxWidth in the
 // current font, cuts it and appends "...".
 static String fitText(const char *utf8, int16_t maxWidth) {
-    String text = utf8ToLatin1(utf8);
-    display.setTextWrap(false);  // otherwise long text is measured as wrapped at the screen edge
-    if (textWidth(text) > maxWidth) {
-        while (!text.isEmpty() && textWidth(text + "...") > maxWidth) {
-            text.remove(text.length() - 1);
-        }
-        while (text.endsWith(" ")) text.remove(text.length() - 1);
-        text += "...";
+    return ellipsize(utf8ToLatin1(utf8), maxWidth);
+}
+
+// True if the text has anything but whitespace from index start on
+static bool hasTextFrom(const String &text, size_t start) {
+    for (size_t i = start; i < text.length(); i++) {
+        if (!isspace((unsigned char)text[i])) return true;
     }
-    display.setTextWrap(true);  // Adafruit GFX default
-    return text;
+    return false;
+}
+
+// Length of the start of the paragraph that fits into maxWidth: as many whole words as fit,
+// or as many characters as fit if even the first word is too long.
+static size_t fittingLength(const String &paragraph, int16_t maxWidth) {
+    if (textWidth(paragraph) <= maxWidth) return paragraph.length();
+
+    size_t fit = 0;
+    int space = paragraph.indexOf(' ');
+    while (space >= 0 && textWidth(paragraph.substring(0, space)) <= maxWidth) {
+        fit = space;
+        space = paragraph.indexOf(' ', space + 1);
+    }
+    if (fit > 0) return fit;
+
+    fit = 1;  // always at least one character, so the text gets shorter with every line
+    while (fit < paragraph.length() && textWidth(paragraph.substring(0, fit + 1)) <= maxWidth) {
+        fit++;
+    }
+    return fit;
+}
+
+// Box with the text inside, wrapped at spaces and newlines into at most maxLines lines; if
+// the text needs more, the last line ends with "...". Like an HTML <textarea rows=maxLines>,
+// the box always has the height of maxLines lines. Only draws into the buffer, like
+// drawHeading(). Returns the y below the box.
+static int16_t drawTextarea(const char *utf8, int16_t x, int16_t y, int16_t width, uint8_t maxLines,
+                            const GFXfont *font) {
+    display.setFont(font);
+    int16_t x1, y1;
+    uint16_t w, h;
+    display.getTextBounds("\xC4g", 0, 0, &x1, &y1, &w, &h);  // tallest and lowest letters: Äg
+    const int16_t ascent = -y1;
+    const int16_t descent = h + y1;
+    const int16_t lineHeight = font->yAdvance;
+    const int16_t boxH = 2 * TEXTAREA_PADDING + (maxLines - 1) * lineHeight + ascent + descent;
+    display.drawRect(x, y, width, boxH, GxEPD_BLACK);
+
+    String text = utf8ToLatin1(utf8);
+    text.replace("\r", "");
+    const int16_t textX = x + TEXTAREA_PADDING;
+    const int16_t textW = width - 2 * TEXTAREA_PADDING;
+    int16_t baseline = y + TEXTAREA_PADDING + ascent;
+    size_t pos = 0;
+    for (uint8_t line = 0; line < maxLines && hasTextFrom(text, pos); line++) {
+        while (text[pos] == ' ') pos++;  // no spaces at the start of a line
+        int newline = text.indexOf('\n', pos);
+        const size_t paragraphEnd = newline >= 0 ? newline : text.length();
+        const String paragraph = text.substring(pos, paragraphEnd);
+
+        String lineText;
+        if (line == maxLines - 1) {
+            // last line: whatever doesn't fit (or follows in further paragraphs) becomes "..."
+            lineText = ellipsize(paragraph, textW, hasTextFrom(text, paragraphEnd));
+        } else {
+            const size_t length = fittingLength(paragraph, textW);
+            lineText = paragraph.substring(0, length);
+            pos += length;
+            if (pos == paragraphEnd && newline >= 0) pos++;  // the line ends with the paragraph
+        }
+
+        display.setCursor(textX, baseline);
+        display.print(lineText);
+        baseline += lineHeight;
+    }
+    return y + boxH;
 }
 
 // Achievement badge at the right end of the heading, with the count left of it.
@@ -148,13 +227,6 @@ static void drawHeading(const char *heading, uint8_t achievements, Icon icon = I
     display.drawLine(HEADING_START_X, lineY, display.width() - HEADING_START_X, lineY, GxEPD_BLACK);
 }
 
-void initDisplay() {
-    SPI.end();
-    SPI.begin(13, 12, 14, 15);  // SCK=13, MISO=12 (unused), MOSI=14, SS=15
-    display.init(115200, true, 2, false);
-    display.setRotation(0);
-}
-
 static void drawActivityStats(StravaActivity act) {
     char distance[16];
     snprintf(distance, sizeof(distance), "%.2f km", act.distance_km);
@@ -163,7 +235,13 @@ static void drawActivityStats(StravaActivity act) {
     display.setCursor(BODY_START_X, BODY_START_Y);
     printText(act.date.c_str());
 
-    display.setFont(&FreeSansBold24pt8b);
+    if (!act.description.isEmpty()) {
+        const int16_t width = display.width() / 2 - MAP_MARGIN - BODY_START_X;
+        drawTextarea(act.description.c_str(), BODY_START_X, BODY_START_Y + 15, width, 3,
+                     &FreeSans12pt8b);
+    }
+
+    display.setFont(&FreeSans18pt8b);
     display.setCursor(BODY_START_X, 380);
     display.print(distance);
 }
@@ -191,8 +269,8 @@ static void drawActivityMap(const String &polyline) {
 
     const int16_t boxX = display.width() / 2 + MAP_MARGIN;
     const int16_t boxY = HEADING_START_Y + 20 + MAP_MARGIN;  // below the heading line
-    const int16_t boxW = display.width() - HEADING_START_X - boxX;
-    const int16_t boxH = display.height() - (FOOTER_SIZE_Y * 2) - MAP_MARGIN - boxY;
+    const int16_t boxW = display.width() - boxX - MAP_MARGIN;
+    const int16_t boxH = display.height() - FOOTER_SIZE_Y - MAP_MARGIN - boxY;
 
     // Same scale on both axes, so the route isn't distorted; centered in the box
     const float scale =
@@ -279,4 +357,11 @@ void drawIconOverviewScreen() {
 
 void hibernateDisplay() {
     display.hibernate();
+}
+
+void initDisplay() {
+    SPI.end();
+    SPI.begin(13, 12, 14, 15);  // SCK=13, MISO=12 (unused), MOSI=14, SS=15
+    display.init(115200, true, 2, false);
+    display.setRotation(0);
 }
