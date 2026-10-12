@@ -2,6 +2,10 @@
 
 Show your Strava activities on a Waveshare 7.5" e-Paper display driven by the Waveshare e-Paper ESP32 Driver Board.
 
+## Preview
+
+![The e-paper display showing a Strava activity: name, date, distance and route map](docs/preview.jpg)
+
 ## Hardware
 
 | Part | Notes |
