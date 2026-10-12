@@ -165,7 +165,7 @@ static int16_t drawTextarea(const char *utf8, int16_t x, int16_t y, int16_t widt
     const int16_t descent = h + y1;
     const int16_t lineHeight = font->yAdvance;
     const int16_t boxH = 2 * TEXTAREA_PADDING + (maxLines - 1) * lineHeight + ascent + descent;
-    display.drawRect(x, y, width, boxH, GxEPD_BLACK);
+    display.drawRoundRect(x, y, width, boxH, BADGE_RADIUS / 2, GxEPD_BLACK);
 
     String text = utf8ToLatin1(utf8);
     text.replace("\r", "");
@@ -248,12 +248,16 @@ static void drawActivityStats(StravaActivity act) {
     display.setCursor(BODY_START_X, BODY_START_Y);
     printText(act.date.c_str());
 
+    display.setCursor(BODY_START_X, BODY_START_Y + 20);
+    printText(act.device_name.c_str());
+
     if (!act.description.isEmpty()) {
         const int16_t width = display.width() / 2 - MAP_MARGIN - BODY_START_X;
-        drawTextarea(act.description.c_str(), BODY_START_X, BODY_START_Y + 15, width, 3,
+        drawTextarea(act.description.c_str(), BODY_START_X, BODY_START_Y + 35, width, 3,
                      &FreeSans12pt8b);
     }
 
+    // print distance
     display.setFont(&FreeSans18pt8b);
     display.setCursor(BODY_START_X, 380);
     display.print(distance);
