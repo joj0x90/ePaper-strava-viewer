@@ -14,6 +14,64 @@ Show your Strava activities on a Waveshare 7.5" e-Paper display driven by the Wa
 | Waveshare e-Paper ESP32 Driver Board | ESP32-WROOM-32, CP2102 USB-UART, onboard 24-pin FPC connector |
 | Micro-USB cable | Must be a data cable, not charge-only |
 
+### Battery power (optional)
+
+| Part | Notes |
+| --- | --- |
+| Li-Ion cell (3.7 V) | e.g. 18650 |
+| TP4056 charging board with protection (DW01) | USB-C, outputs the raw battery voltage (3.0–4.2 V), no boost converter |
+| HT7333 LDO regulator | 3.3 V, low dropout, 4 µA quiescent current |
+| 2× 10 µF capacitor | Input and output capacitor of the HT7333 |
+| 470–1000 µF electrolytic capacitor | Buffers the WiFi current peaks |
+
+The charging board's output must **not** go to the driver board's 5V pin. The onboard regulator
+drops about 1 V, so the ESP32 gets 3.0 V or less and browns out (or the DW01 cuts the power) as
+soon as WiFi starts; the board then stays off and never wakes up from deep sleep. Instead, the
+HT7333 powers the **3V3** pin directly:
+
+```
+                 TP4056 charging board
+   Li-Ion        ┌────────────────────┐
+   cell     +────┤ B+            OUT+ ├──────┬──────────────┐
+            −────┤ B−            OUT− ├──┐   │              │
+                 └────────────────────┘  │  ═╪═ C1 10µF     │
+                                         │   │              │
+                                         │   │    HT7333    │
+                                         │   │  ┌────────┐  │
+                                         │   └──┤ VIN    │◄─┘
+                                         │      │        │
+                                         ├──────┤ GND    │
+                                         │      │        │
+                                         │   ┌──┤ VOUT   │
+                                         │   │  └────────┘
+                                         │   │
+                                         │   ├──── ═╪═ C2 10µF
+                                         │   ├──── ═╪═ C3 470µF (+ to VOUT)
+                                         │   │
+                 ESP32 e-Paper board     │   │
+                 ┌────────────────────┐  │   │
+                 │ 3V3 ◄──────────────┼──┼───┘
+                 │ GND ◄──────────────┼──┘
+                 │ 5V/VIN  (unused)   │
+                 └────────────────────┘
+   all capacitor "−" legs go to GND
+```
+
+- **Pinout:** the TO-92 HT7333-A is **GND – VIN – VOUT** from left to right, looking at the flat,
+  printed side with the legs pointing down. Other variants and packages (SOT-89, …) can differ,
+  so check the datasheet for the exact part number printed on yours.
+- **C1 / C2 (10 µF)** are required by the datasheet, otherwise the regulator can oscillate. Place
+  them as close to the pins as possible.
+- **C3 (470–1000 µF)** is strongly recommended: the HT7333 is only rated for 250 mA, while the
+  ESP32 draws short peaks of about 300–400 mA when WiFi starts. C3 supplies them. If the board
+  still resets while connecting to WiFi, use an LDO rated for 500 mA (e.g. MCP1825S-3302, XC6220).
+- **Disconnect the battery before flashing via USB**, otherwise the onboard regulator and the
+  HT7333 both drive the 3V3 rail.
+- Below about 3.4 V battery voltage the output follows the battery minus the dropout. The ESP32
+  runs down to about 3.0 V, and the DW01 cuts off at about 2.5 V.
+- **Check:** about 3.3 V at the 3V3 pin, the board's LED stays on during deep sleep, and the
+  display refreshes at the next full hour.
+
 ## Software prerequisites
 
 1. **VS Code**: <https://code.visualstudio.com/>
