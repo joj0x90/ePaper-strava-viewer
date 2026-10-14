@@ -71,6 +71,37 @@ StravaError fetchAccessToken(const char *clientId, const char *clientSecret,
     return StravaError();
 }
 
+StravaError exchangeAuthorizationCode(const char *clientId, const char *clientSecret,
+                                      const char *code, String &refreshToken, String &athleteName) {
+    initClient();
+    HTTPClient http;
+    http.begin(client, "https://www.strava.com/oauth/token");
+    http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+
+    String body = String("client_id=") + clientId + "&client_secret=" + clientSecret +
+                  "&code=" + code + "&grant_type=authorization_code";
+    int status = http.POST(body);
+    String response = http.getString();
+    http.end();
+    if (status != HTTP_CODE_OK) {
+        return makeError(StravaErrorCode::TokenRequestFailed, status, response);
+    }
+
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, response);
+    if (err) {
+        return makeError(StravaErrorCode::TokenInvalidJson, status, err.c_str());
+    }
+    refreshToken = doc["refresh_token"] | "";
+    if (refreshToken.isEmpty()) {
+        return makeError(StravaErrorCode::TokenMissing, status);
+    }
+    athleteName =
+        String(doc["athlete"]["firstname"] | "") + " " + String(doc["athlete"]["lastname"] | "");
+    athleteName.trim();
+    return StravaError();
+}
+
 // Only keep the fields we need, to save memory
 static void addActivityFilter(JsonObject filter) {
     filter["id"] = true;

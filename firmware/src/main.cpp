@@ -1,6 +1,5 @@
 #include <Arduino.h>
 #include <Preferences.h>
-#include <esp_ota_ops.h>
 
 #if __has_include("secrets.h")
 #include "secrets.h"
@@ -8,6 +7,8 @@
 #include "Battery.h"
 #include "EpaperDisplay.h"
 #include "OtaUpdate.h"
+#include "Settings.h"
+#include "SetupPortal.h"
 #include "SleepSchedule.h"
 #include "StravaApi.h"
 #include "WifiConnect.h"
@@ -19,6 +20,8 @@ static const uint32_t WAKE_DELAY_S = 5;
 static const uint32_t EARLY_WAKE_MARGIN_S = 600;
 // Fallback interval if the clock has never been set (no WiFi since power-on)
 static const uint32_t FALLBACK_SLEEP_S = 3600;
+// How long the setup page is available after a button press, or if the device isn't set up
+static const uint8_t SETUP_MINUTES = 10;
 
 // What is currently on the display, kept in flash (NVS) so it survives deep sleep, resets and
 // power loss: the activity ID (0 = no activity, e.g. an error screen) and the firmware that drew
@@ -31,44 +34,6 @@ static const char *PREFS_SHOWN_BATTERY = "shownBattery";
 // The battery charge alone redraws the display only after it changed by this many percent, so
 // ADC noise doesn't cost an e-paper refresh (and battery) every hour.
 static const int8_t BATTERY_REDRAW_STEP = 5;
-
-// WiFi and Strava credentials, kept in NVS: the release builds from CI are public and contain
-// none. A local build with include/secrets.h stores them on boot, so flash one once via USB.
-static const char *PREFS_CREDENTIALS = "credentials";
-
-struct Credentials {
-    String wifiSsid, wifiPassword;
-    String stravaClientId, stravaClientSecret, stravaRefreshToken;
-};
-
-static Credentials loadCredentials() {
-    Preferences prefs;
-#if __has_include("secrets.h")
-    prefs.begin(PREFS_CREDENTIALS, false);
-    prefs.putString("wifiSsid", WIFI_SSID);
-    prefs.putString("wifiPassword", WIFI_PASSWORD);
-    prefs.putString("clientId", STRAVA_CLIENT_ID);
-    prefs.putString("clientSecret", STRAVA_CLIENT_SECRET);
-    prefs.putString("refreshToken", STRAVA_REFRESH_TOKEN);
-#else
-    prefs.begin(PREFS_CREDENTIALS, true);  // fails if never provisioned: all strings stay empty
-#endif
-    Credentials c;
-    c.wifiSsid = prefs.getString("wifiSsid");
-    c.wifiPassword = prefs.getString("wifiPassword");
-    c.stravaClientId = prefs.getString("clientId");
-    c.stravaClientSecret = prefs.getString("clientSecret");
-    c.stravaRefreshToken = prefs.getString("refreshToken");
-    prefs.end();
-    return c;
-}
-
-// Hash of the running firmware, changes with every build that changes the code
-static String firmwareHash() {
-    char hash[17];  // the first 16 hex digits are enough to tell builds apart
-    esp_ota_get_app_elf_sha256(hash, sizeof(hash));
-    return hash;
-}
 
 static bool isAlreadyShown(uint64_t activityId, const String &notice, int8_t batteryPercent) {
     Preferences prefs;
@@ -103,6 +68,34 @@ static void showError(const char *message) {
     saveShownActivityId(0);
 }
 
+// Error the settings can fix, e.g. a WiFi that isn't found: also tells how to open the setup page.
+static void showSetupHint(const char *heading, const char *message, SetupHint hint) {
+    initDisplay();
+    drawSetupHint(heading, message, hint, accessPointSsid().c_str(), accessPointPassword().c_str(),
+                  SETUP_AP_URL, SETUP_MINUTES);
+    hibernateDisplay();
+    saveShownActivityId(0);
+}
+
+static bool hasStravaCredentials(const Credentials &c) {
+    return !c.stravaClientId.isEmpty() && !c.stravaClientSecret.isEmpty() &&
+           !c.stravaRefreshToken.isEmpty();
+}
+
+// 4xx from the token endpoint: the Strava credentials are wrong. 401 for the activities: the
+// login works, but wasn't allowed to read activities. Connecting Strava again fixes both.
+static bool isLoginRejected(const StravaError &error) {
+    if (error.code == StravaErrorCode::ActivityRequestFailed) return error.httpStatus == 401;
+    return error.code == StravaErrorCode::TokenRequestFailed && error.httpStatus >= 400 &&
+           error.httpStatus < 500;
+}
+
+// What the display says about a rejected login
+static const char *loginRejectedMessage(const StravaError &error) {
+    return error.code == StravaErrorCode::ActivityRequestFailed ? "Strava permission missing"
+                                                                : error.message();
+}
+
 // Tells the user why the activity takes longer; it replaces the activity, so the activity is
 // drawn again if the update fails.
 static void showUpdating(const char *newVersion) {
@@ -113,9 +106,10 @@ static void showUpdating(const char *newVersion) {
 }
 
 // Loads the latest activity and draws it with the footer notice and battery charge if it isn't
-// on the display already, or draws the error that occurred. Needs WiFi.
-static void showLastActivity(const Credentials &credentials, const String &notice,
-                             int8_t batteryPercent) {
+// on the display already, or draws the error that occurred. A rejected login is only returned:
+// the caller decides how to get new credentials. Needs WiFi.
+static StravaError showLastActivity(const Credentials &credentials, const String &notice,
+                                    int8_t batteryPercent) {
     String accessToken;
     StravaActivity activity;
     StravaError stravaError =
@@ -128,8 +122,8 @@ static void showLastActivity(const Credentials &credentials, const String &notic
     if (!stravaError.ok()) {
         Serial.printf("Strava error %d (HTTP %d): %s\n%s\n", static_cast<int>(stravaError.code),
                       stravaError.httpStatus, stravaError.message(), stravaError.detail.c_str());
-        showError(stravaError.message());
-        return;
+        if (!isLoginRejected(stravaError)) showError(stravaError.message());
+        return stravaError;
     }
 
     Serial.printf("%llu | %s | %s | %s | %.2f km\n", (unsigned long long)activity.id,
@@ -137,13 +131,14 @@ static void showLastActivity(const Credentials &credentials, const String &notic
                   activity.distance_km);
     if (isAlreadyShown(activity.id, notice, batteryPercent)) {
         Serial.println("Activity and battery are already shown by this firmware, not refreshing");
-        return;
+        return stravaError;
     }
 
     initDisplay();
     drawActivity(activity, notice.c_str(), batteryPercent);
     hibernateDisplay();
     saveShownActivityId(activity.id, notice, batteryPercent);
+    return stravaError;
 }
 
 [[noreturn]] static void sleepUntilNextFullHour() {
@@ -151,28 +146,57 @@ static void showLastActivity(const Credentials &credentials, const String &notic
     deepSleepFor(clockIsSet() ? secondsUntilNextFullHour() + WAKE_DELAY_S : FALLBACK_SLEEP_S);
 }
 
-void setup() {
-    Serial.begin(115200);
-    printLocalTime(wokeFromDeepSleep() ? "Woke up at" : "Started at");
+[[noreturn]] static void showActivityAndSleep(const Credentials &credentials,
+                                              const DeviceStatus &status, bool mayOpenSetup);
 
-    // before WiFi, whose current peaks pull the battery voltage down
-    const float batteryVolts = readBatteryVoltage();
-    const int8_t batteryPercent = ::batteryPercent(batteryVolts);
-    Serial.printf("Battery: %.2f V, %d %%\n", batteryVolts, batteryPercent);
+// Opens the setup page for SETUP_MINUTES: in the WiFi if it's connected or connects, otherwise in
+// the device's own access point, and shows how to reach it, with the message (why) if there is
+// one. Saving or resetting restarts the device with the new settings. When the time is up, it
+// continues with the settings it has, without opening the setup page again, so missing
+// credentials can't keep it in setup mode; without WiFi credentials it sleeps until the button.
+[[noreturn]] static void runSetupMode(const Credentials &credentials, const DeviceStatus &status,
+                                      const char *message = "") {
+    const bool inWifi =
+        WiFi.isConnected() ||
+        (!credentials.wifiSsid.isEmpty() &&
+         connectWifi(credentials.wifiSsid.c_str(), credentials.wifiPassword.c_str()).ok());
+    const String url = startSetupPortal(!inWifi, status, SETUP_MINUTES * 60000UL);
+    Serial.printf("Setup mode for %u minutes: %s\n", SETUP_MINUTES, url.c_str());
 
-    const Credentials credentials = loadCredentials();
-    if (credentials.wifiSsid.isEmpty()) {
-        Serial.println("No credentials in NVS, flash a build with include/secrets.h once via USB");
-        showError("No credentials, flash once via USB");
-        sleepUntilNextFullHour();
+    initDisplay();
+    if (inWifi) {
+        drawSetupInWifi(url.c_str(), SETUP_MDNS_URL, credentials.wifiSsid.c_str(), message,
+                        SETUP_MINUTES);
+    } else {
+        drawSetupAccessPoint(accessPointSsid().c_str(), accessPointPassword().c_str(), url.c_str(),
+                             SETUP_MINUTES);
     }
+    hibernateDisplay();
+    saveShownActivityId(0);
 
+    if (runSetupPortal() != SetupResult::TimedOut) esp_restart();
+
+    // nothing was saved, so the credentials are still the same
+    if (credentials.wifiSsid.isEmpty()) {
+        showSetupHint("Not set up", "The setup mode ended without saved settings.",
+                      SetupHint::NotSetUp);
+        deepSleepUntilButton();  // the timer would only open the setup page again and again
+    }
+    showActivityAndSleep(credentials, status, false);
+}
+
+// Connects to the WiFi, installs a new release if there is one, shows the latest activity and
+// sleeps until the next full hour. With mayOpenSetup, missing or rejected Strava credentials open
+// the setup page in the WiFi; otherwise they're only shown, so a broken login doesn't keep the
+// device in setup mode every hour.
+[[noreturn]] static void showActivityAndSleep(const Credentials &credentials,
+                                              const DeviceStatus &status, bool mayOpenSetup) {
     WifiError wifiError =
         connectWifi(credentials.wifiSsid.c_str(), credentials.wifiPassword.c_str());
     if (!wifiError.ok()) {
         Serial.printf("WiFi error %d (status %d): %s\n", static_cast<int>(wifiError.code),
                       wifiError.status, wifiError.message());
-        showError(wifiError.message());
+        showSetupHint("Error:", wifiError.message(), SetupHint::WifiFailed);
         sleepUntilNextFullHour();  // by the RTC clock, if it was set before
     }
 
@@ -186,10 +210,50 @@ void setup() {
     const String updateError = updateFirmwareIfAvailable(showUpdating);
     const String notice = updateError.isEmpty() ? "" : "Update failed: " + updateError;
 
-    printLocalTime("Refreshing at");
+    if (!hasStravaCredentials(credentials)) {
+        const char *message = "Strava isn't set up yet";
+        Serial.println(message);
+        if (mayOpenSetup) runSetupMode(credentials, status, message);
+        showSetupHint("Error:", message, SetupHint::StravaFailed);
+        disconnectWifi();
+        deepSleepUntilButton();  // there's nothing to load until it's set up
+    }
 
-    showLastActivity(credentials, notice, batteryPercent);
+    printLocalTime("Refreshing at");
+    const StravaError stravaError = showLastActivity(credentials, notice, status.batteryPercent);
+    if (isLoginRejected(stravaError)) {
+        if (mayOpenSetup) runSetupMode(credentials, status, loginRejectedMessage(stravaError));
+        showSetupHint("Error:", loginRejectedMessage(stravaError), SetupHint::StravaFailed);
+    }
     sleepUntilNextFullHour();
+}
+
+void setup() {
+    Serial.begin(115200);
+    printLocalTime(wokeFromDeepSleep() ? "Woke up at" : "Started at");
+
+    // before WiFi, whose current peaks pull the battery voltage down
+    const float batteryVolts = readBatteryVoltage();
+    const int8_t batteryPercent = ::batteryPercent(batteryVolts);
+    Serial.printf("Battery: %.2f V, %d %%\n", batteryVolts, batteryPercent);
+    const DeviceStatus status = {batteryVolts, batteryPercent};
+
+#if __has_include("secrets.h")
+    provisionCredentials(
+        {WIFI_SSID, WIFI_PASSWORD, STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET, STRAVA_REFRESH_TOKEN});
+#endif
+    const Credentials credentials = loadCredentials();
+    if (credentials.wifiSsid.isEmpty()) {
+        Serial.println("Not set up yet");
+        runSetupMode(credentials, status);
+    }
+    if (wokeByButton()) {
+        Serial.println("Woken up by the button");
+        runSetupMode(credentials, status);
+    }
+    // a start by the user (power-on, restart after saving) may open the setup page, the hourly
+    // timer doesn't
+    showActivityAndSleep(credentials, status, !wokeFromDeepSleep());
 }
 
 void loop() {}  // never reached, setup() always ends in deep sleep

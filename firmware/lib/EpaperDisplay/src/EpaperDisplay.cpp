@@ -2,6 +2,7 @@
 
 #include <SPI.h>
 #include <GxEPD2_BW.h>
+#include <qrcode.h>  // ESP-IDF's QR code generator
 
 #include "ActivityIcons.h"
 #include "IconOverview.h"
@@ -39,6 +40,11 @@
 #define MAP_LINE_WIDTH 3
 
 #define TEXTAREA_PADDING 8
+
+// QR codes on the setup screens, with the text column next to or below them
+#define QR_SIZE 220
+#define QR_Y (BODY_START_Y + 10)
+#define SETUP_TEXT_GAP 30
 
 // Battery symbol in the footer's right corner, right of its charge in percent
 #define BATTERY_W 28
@@ -525,6 +531,201 @@ void drawUpdate(const char *fromVersion, const char *toVersion) {
         printText("Downloading the new firmware, this can take a minute.");
         display.setCursor(BODY_START_X, BODY_START_Y + 80);
         printText("The latest activity will be shown afterwards.");
+        drawFooter();
+    } while (display.nextPage());
+}
+
+// esp_qrcode_generate() hands the code to a callback without a context pointer, so drawQrCode()
+// leaves the target square here.
+static struct {
+    int16_t x, y, size;
+} qrTarget;
+
+static void drawQrModules(esp_qrcode_handle_t qrcode) {
+    const int modules = esp_qrcode_get_size(qrcode);
+    const int16_t scale = qrTarget.size / modules;  // whole pixels per module keep it sharp
+    const int16_t offset = (qrTarget.size - scale * modules) / 2;
+    for (int y = 0; y < modules; y++) {
+        for (int x = 0; x < modules; x++) {
+            if (esp_qrcode_get_module(qrcode, x, y)) {
+                display.fillRect(qrTarget.x + offset + x * scale, qrTarget.y + offset + y * scale,
+                                 scale, scale, GxEPD_BLACK);
+            }
+        }
+    }
+}
+
+// QR code as large as fits into the square (x, y, size, size), centered in it. The screen's
+// white background around it serves as the quiet zone. Only draws into the buffer.
+static void drawQrCode(const char *text, int16_t x, int16_t y, int16_t size) {
+    qrTarget = {x, y, size};
+    esp_qrcode_config_t config = ESP_QRCODE_CONFIG_DEFAULT();
+    config.display_func = drawQrModules;
+    config.qrcode_ecc_level = ESP_QRCODE_ECC_MED;
+    esp_qrcode_generate(&config, text);
+}
+
+// Content of a QR code that connects a phone to the WiFi when scanned with its camera.
+static String wifiQrText(const char *ssid, const char *password) {
+    auto escape = [](const char *text) {
+        String out;
+        for (; *text; text++) {
+            if (strchr("\\;,:\"", *text)) out += '\\';
+            out += *text;
+        }
+        return out;
+    };
+    return "WIFI:T:WPA;S:" + escape(ssid) + ";P:" + escape(password) + ";;";
+}
+
+// Prints the text centered on centerX in the current font, cut with "..." if wider than maxWidth.
+static void printCentered(const char *utf8, int16_t centerX, int16_t baseline, int16_t maxWidth) {
+    const String fitted = fitText(utf8, maxWidth);
+    int16_t x1, y1;
+    uint16_t w, h;
+    display.getTextBounds(fitted, 0, baseline, &x1, &y1, &w, &h);
+    display.setCursor(centerX - w / 2 - x1, baseline);
+    display.print(fitted);
+}
+
+// Prints the text in the font, wrapped at spaces into lines of at most maxWidth. Returns the
+// baseline of the line below.
+static int16_t printWrapped(const char *utf8, const GFXfont *font, int16_t x, int16_t baseline,
+                            int16_t maxWidth) {
+    display.setFont(font);
+    const String text = utf8ToLatin1(utf8);
+    size_t pos = 0;
+    while (hasTextFrom(text, pos)) {
+        while (text[pos] == ' ') pos++;  // no spaces at the start of a line
+        const size_t length = fittingLength(text.substring(pos), maxWidth);
+        display.setCursor(x, baseline);
+        display.print(text.substring(pos, pos + length));
+        pos += length;
+        baseline += font->yAdvance;
+    }
+    return baseline;
+}
+
+void drawSetupAccessPoint(const char *apSsid, const char *apPassword, const char *url,
+                          uint8_t minutes) {
+    const int16_t columnW = display.width() / 2;
+    const int16_t textW = columnW - 2 * BODY_START_X;
+    const String joinWifi = wifiQrText(apSsid, apPassword);
+    char ends[48];
+    snprintf(ends, sizeof(ends), "The setup mode ends after %u minutes.", minutes);
+
+    display.setFullWindow();
+    display.firstPage();
+    do {
+        display.fillScreen(GxEPD_WHITE);
+        display.setTextColor(GxEPD_BLACK);
+        drawHeading("Setup", 0);
+
+        drawQrCode(joinWifi.c_str(), columnW / 2 - QR_SIZE / 2, QR_Y, QR_SIZE);
+        drawQrCode(url, columnW + columnW / 2 - QR_SIZE / 2, QR_Y, QR_SIZE);
+        display.drawLine(columnW, QR_Y, columnW, QR_Y + QR_SIZE + 100, GxEPD_BLACK);
+
+        display.setFont(&FreeSans12pt8b);
+        const int16_t lineH = FreeSans12pt8b.yAdvance;
+        int16_t y = QR_Y + QR_SIZE + SETUP_TEXT_GAP;
+        printCentered("1. Connect to the WiFi", columnW / 2, y, textW);
+        printCentered((String("Name: ") + apSsid).c_str(), columnW / 2, y + lineH, textW);
+        printCentered((String("Password: ") + apPassword).c_str(), columnW / 2, y + 2 * lineH,
+                      textW);
+        printCentered("2. Open the setup page", columnW * 3 / 2, y, textW);
+        printCentered(url, columnW * 3 / 2, y + lineH, textW);
+        printCentered("(opens by itself on most phones)", columnW * 3 / 2, y + 2 * lineH, textW);
+
+        printCentered(ends, display.width() / 2, y + 2 * lineH + 45, display.width());
+        drawFooter();
+    } while (display.nextPage());
+}
+
+void drawSetupInWifi(const char *url, const char *mdnsUrl, const char *wifiSsid,
+                     const char *message, uint8_t minutes) {
+    const int16_t qrSize = QR_SIZE + 60;
+    const int16_t textX = BODY_START_X + qrSize + SETUP_TEXT_GAP;
+    const int16_t textW = display.width() - textX - BODY_START_X;
+    const String scan = String(
+                            "Scan the QR code, or open this address in a browser connected to "
+                            "the WiFi \"") +
+                        wifiSsid + "\":";
+    char ends[80];
+    snprintf(ends, sizeof(ends),
+             "The setup mode ends after %u minutes, or when you save the settings.", minutes);
+
+    display.setFullWindow();
+    display.firstPage();
+    do {
+        display.fillScreen(GxEPD_WHITE);
+        display.setTextColor(GxEPD_BLACK);
+        if (message[0] != '\0') {
+            drawHeading(message, 0, Icon::Error);
+        } else {
+            drawHeading("Setup", 0);
+        }
+        drawQrCode(url, BODY_START_X, QR_Y, qrSize);
+
+        int16_t y = QR_Y + SETUP_TEXT_GAP;
+        y = printWrapped(scan.c_str(), &FreeSans12pt8b, textX, y, textW) + 15;
+        y = printWrapped(url, &FreeSans18pt8b, textX, y, textW);
+        y = printWrapped((String("or ") + mdnsUrl).c_str(), &FreeSans12pt8b, textX, y, textW);
+        printWrapped(ends, &FreeSans12pt8b, textX, y + 30, textW);
+        drawFooter();
+    } while (display.nextPage());
+}
+
+void drawSetupHint(const char *heading, const char *message, SetupHint hint, const char *apSsid,
+                   const char *apPassword, const char *apUrl, uint8_t minutes) {
+    const int16_t qrY = BODY_START_Y + 60;
+    const int16_t textX = BODY_START_X + QR_SIZE + SETUP_TEXT_GAP;
+    const int16_t textW = display.width() - textX - BODY_START_X;
+    const String joinWifi = wifiQrText(apSsid, apPassword);
+    const char *press = hint == SetupHint::NotSetUp
+                            ? "To set up the device, press the button on it."
+                            : "To change the settings, press the button on the device.";
+    char ownWifi[160];
+    snprintf(ownWifi, sizeof(ownWifi),
+             "%s its own WiFi for %u minutes. Scan the QR code to connect to it, or use:",
+             hint == SetupHint::NotSetUp ? "It then opens"
+                                         : "If it can't connect to your WiFi, it opens",
+             minutes);
+    const String then = String("Then open ") + apUrl + " (opens by itself on most phones).";
+    char inWifi[200];
+    snprintf(inWifi, sizeof(inWifi),
+             "It then shows a QR code for the setup page in your WiFi, for %u minutes. Enter the "
+             "Strava Client ID, Client secret and Refresh token there (see the README).",
+             minutes);
+
+    display.setFullWindow();
+    display.firstPage();
+    do {
+        display.fillScreen(GxEPD_WHITE);
+        display.setTextColor(GxEPD_BLACK);
+        drawHeading(heading, 0, Icon::Error);
+        display.setFont(&FreeSans18pt8b);
+        display.setCursor(BODY_START_X, BODY_START_Y + 25);
+        display.print(fitText(message, display.width() - 2 * BODY_START_X));
+
+        if (hint == SetupHint::StravaFailed) {  // the WiFi works, its own isn't needed
+            int16_t y = qrY + 20;
+            const int16_t fullW = display.width() - 2 * BODY_START_X;
+            y = printWrapped("To log in to Strava, press the button on the device.",
+                             &FreeSans12pt8b, BODY_START_X, y, fullW) +
+                10;
+            printWrapped(inWifi, &FreeSans12pt8b, BODY_START_X, y, fullW);
+        } else {
+            drawQrCode(joinWifi.c_str(), BODY_START_X, qrY, QR_SIZE);
+
+            int16_t y = qrY + 20;
+            y = printWrapped(press, &FreeSans12pt8b, textX, y, textW) + 10;
+            y = printWrapped(ownWifi, &FreeSans12pt8b, textX, y, textW);
+            y = printWrapped((String("Name: ") + apSsid).c_str(), &FreeSans12pt8b, textX, y, textW);
+            y = printWrapped((String("Password: ") + apPassword).c_str(), &FreeSans12pt8b, textX, y,
+                             textW) +
+                10;
+            printWrapped(then.c_str(), &FreeSans12pt8b, textX, y, textW);
+        }
         drawFooter();
     } while (display.nextPage());
 }

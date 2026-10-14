@@ -47,6 +47,11 @@ struct StravaError {
 StravaError fetchAccessToken(const char *clientId, const char *clientSecret,
                              const char *refreshToken, String &accessToken);
 
+// Exchanges the code from Strava's authorization page (OAuth, see the setup page) for the
+// long-lived refresh token, and the athlete's name to confirm whose account it is.
+StravaError exchangeAuthorizationCode(const char *clientId, const char *clientSecret,
+                                      const char *code, String &refreshToken, String &athleteName);
+
 StravaError fetchLastActivity(const String &accessToken, StravaActivity &activity);
 
 // Loads one activity by its Strava ID (the number in strava.com/activities/<id>).

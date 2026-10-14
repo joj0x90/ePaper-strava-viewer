@@ -13,6 +13,22 @@ Show your Strava activities on a Waveshare 7.5" e-Paper display driven by the Wa
 | Waveshare 7.5" e-Paper (V2, 800×480, black/white) | Raw panel with FPC ribbon cable |
 | Waveshare e-Paper ESP32 Driver Board | ESP32-WROOM-32, CP2102 USB-UART, onboard 24-pin FPC connector |
 | Micro-USB cable | Must be a data cable, not charge-only |
+| Pushbutton | Opens the setup page, see [Setup button](#setup-button) |
+
+### Setup button
+
+A pushbutton between **GPIO33** and **GND** wakes the ESP32 from deep sleep and opens the
+[setup page](#setup-page). No resistor is needed: the ESP32's internal pull-up stays on during
+deep sleep and only draws current while the button is pressed.
+
+```
+   ESP32 board
+   GPIO33 ────── button ────── GND
+```
+
+Another pin works too, as long as it's an RTC GPIO (0, 2, 4, 12–15, 25–27, 32–39) that's still
+free: change `BUTTON_PIN` in `firmware/lib/SleepSchedule/src/SleepSchedule.cpp`. GPIO34–39 have no
+internal pull-up and need an external 10 kΩ resistor to 3V3.
 
 ### Battery power (optional)
 
@@ -151,11 +167,23 @@ void loop() {
 ### 2. Strava API credentials
 
 1. Log in to Strava and go to <https://www.strava.com/settings/api>.
-2. Create an application. Set **Authorization Callback Domain** to `localhost`.
-3. Note the **Client ID** and **Client Secret**.
+2. Create an application. Set **Authorization Callback Domain** to `strava-viewer.local`.
+3. Open the [setup page](#setup-page) in your WiFi, copy the **Client ID** and **Client Secret**
+   into it and click **Connect with Strava**. Authorize the app at Strava (keep *View data about
+   your private activities* checked). Strava leads you back to the setup page, which shows
+   *Strava is connected (…)*. Click **Save** to show your latest activity.
+
+If the browser shows an error page instead of the setup page after authorizing (some phones can't
+open `.local` addresses), open *Strava doesn't lead you back here?* on the setup page and paste
+the error page's address there. With `localhost` as callback domain this works too: use
+**Authorize via localhost** there.
+
+Without the setup page, e.g. for `secrets.h`, get the refresh token by hand (callback domain
+`localhost`):
+
 4. Open this URL in your browser (replace `YOUR_CLIENT_ID`) and authorize the app:
    ```
-   https://www.strava.com/oauth/authorize?client_id=YOUR_CLIENT_ID&response_type=code&redirect_uri=http://localhost&approval_prompt=force&scope=read,activity:read_all
+   https://www.strava.com/oauth/authorize?client_id=YOUR_CLIENT_ID&response_type=code&redirect_uri=http://localhost&approval_prompt=force&scope=read,activity:read,activity:read_all
    ```
 5. The browser redirects to `http://localhost/?state=&code=XXXX&scope=...`. The page itself won't load, which is expected. Copy the `code` value from the address bar.
 6. Exchange the code for a refresh token:
@@ -168,9 +196,10 @@ void loop() {
    ```
    Copy the `refresh_token` from the JSON response. The ESP32 uses it to request short-lived access tokens on its own.
 
-### 3. Secrets file
+### 3. Credentials
 
-Create `firmware/include/secrets.h`:
+Enter the WiFi and Strava credentials on the [setup page](#setup-page), or store them with a local
+build: create `firmware/include/secrets.h`:
 
 ```cpp
 #pragma once
@@ -183,7 +212,33 @@ Create `firmware/include/secrets.h`:
 #define STRAVA_REFRESH_TOKEN "your-refresh-token"
 ```
 
-Use it in the code with `#include "secrets.h"`.
+The firmware stores these in NVS on start, but only if no credentials are stored yet, so it
+doesn't overwrite what was entered on the setup page. After **Reset device** on the setup page, the
+same build doesn't store them again, so the reset really deletes them; flashing a new build stores
+them again. To store changed values from `secrets.h`: reset the device, then flash the new build.
+
+### Setup page
+
+The device opens a settings page for 10 minutes, with a countdown on the page:
+
+- **when the [setup button](#setup-button) is pressed:** in the normal WiFi if it connects, the
+  display shows a QR code with the page's address (or `http://strava-viewer.local`);
+- **otherwise, and if no credentials are stored:** in its own WiFi `StravaViewer-XXXX`. The display
+  shows a QR code to connect to it, with its name and password, and one for `http://192.168.4.1`,
+  which most phones open by themselves after connecting.
+
+The page shows the firmware version, the battery and the connection, and changes the WiFi and
+Strava credentials. **Connect with Strava** gets the refresh token from Strava (see
+[Strava API credentials](#2-strava-api-credentials)); it needs the page to run in your WiFi. Fields for passwords and secrets stay empty, which keeps the stored value.
+**Save** stores the settings, closes the page and shows the latest activity. **Reset device**
+deletes all settings (the whole NVS) and restarts. The own WiFi then gets a new password.
+
+If the Strava credentials are missing or rejected after saving or switching the device on, it
+opens the setup page in the WiFi right away, with the reason as the heading. During the hourly
+updates it only shows the error and that the button opens the setup page. If the WiFi isn't found,
+the error screen also shows the QR code for the device's own WiFi. When the 10 minutes end without
+saving, the device continues with the settings it has; without WiFi credentials, or without Strava
+credentials, it sleeps until the button is pressed.
 
 ### 4. Build and upload
 
@@ -254,5 +309,6 @@ The numbers are the values of `WifiErrorCode` (`firmware/lib/WifiConnect/src/Wif
 | Display stays white or shows noise | Check that the ribbon cable is seated properly; toggle the Display Config switch between A and B; make sure you use `GxEPD2_750_T7` (V2) and not `GxEPD2_750` (V1) |
 | Display is stuck in "busy" (timeout in the log) | Wrong pins: check the BUSY/RST pin mapping and the `SPI.begin(13, 12, 14, 15)` remap |
 | Ghosting after many partial refreshes | Do a full refresh regularly (e.g. every 10th update) |
-| Strava returns `401 Unauthorized` | Refresh token is invalid or the scope is missing `activity:read_all`; repeat step 2 |
-| WiFi doesn't connect | Check SSID/password; use a 2.4 GHz network |
+| Strava returns `401 Unauthorized`, or `activity:read_permission` is `missing` | Refresh token is invalid or wasn't allowed to read activities: connect Strava again on the setup page and keep *View data about your activities* checked |
+| WiFi doesn't connect | Check SSID/password on the [setup page](#setup-page); use a 2.4 GHz network |
+| Setup button does nothing | It only wakes the ESP32 from deep sleep, not while it's loading an activity; check the wiring to GPIO33 |

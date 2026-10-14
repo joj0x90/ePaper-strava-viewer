@@ -16,11 +16,18 @@ uint32_t secondsUntilNextFullHour();
 // Prints the current local time, e.g. "Woke up at 2026-10-11 14:00:04".
 void printLocalTime(const char *prefix);
 
-// True if this start is a wake-up from deepSleepFor(), false after power-on or reset.
+// True if this start is a wake-up by the timer of deepSleepFor(), false after power-on, reset or
+// a button press.
 bool wokeFromDeepSleep();
 
-// Turns everything off except the RTC timer. After waking up, the ESP32 restarts and
-// runs setup() again; this function never returns.
+// True if this start is a wake-up by the button (GPIO33 to GND, see the README).
+bool wokeByButton();
+
+// Turns everything off except the RTC timer and the button. After waking up by either, the
+// ESP32 restarts and runs setup() again; this function never returns.
 [[noreturn]] void deepSleepFor(uint32_t seconds);
+
+// Like deepSleepFor(), but only the button wakes the ESP32 up.
+[[noreturn]] void deepSleepUntilButton();
 
 #endif  // SLEEP_SCHEDULE_H
