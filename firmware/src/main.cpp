@@ -5,6 +5,7 @@
 #if __has_include("secrets.h")
 #include "secrets.h"
 #endif
+#include "Battery.h"
 #include "EpaperDisplay.h"
 #include "OtaUpdate.h"
 #include "SleepSchedule.h"
@@ -26,6 +27,10 @@ static const char *PREFS_NAMESPACE = "display";
 static const char *PREFS_SHOWN_ID = "shownId";
 static const char *PREFS_SHOWN_FIRMWARE = "shownFw";
 static const char *PREFS_SHOWN_NOTICE = "shownNotice";
+static const char *PREFS_SHOWN_BATTERY = "shownBattery";
+// The battery charge alone redraws the display only after it changed by this many percent, so
+// ADC noise doesn't cost an e-paper refresh (and battery) every hour.
+static const int8_t BATTERY_REDRAW_STEP = 5;
 
 // WiFi and Strava credentials, kept in NVS: the release builds from CI are public and contain
 // none. A local build with include/secrets.h stores them on boot, so flash one once via USB.
@@ -65,22 +70,28 @@ static String firmwareHash() {
     return hash;
 }
 
-static bool isAlreadyShown(uint64_t activityId, const String &notice) {
+static bool isAlreadyShown(uint64_t activityId, const String &notice, int8_t batteryPercent) {
     Preferences prefs;
     if (!prefs.begin(PREFS_NAMESPACE, true)) return false;  // namespace doesn't exist yet
+    const int8_t shownBattery = prefs.getChar(PREFS_SHOWN_BATTERY, -1);
+    // a battery that was connected or disconnected (-1) always counts as a change
+    const bool batteryShown = (shownBattery < 0) == (batteryPercent < 0) &&
+                              abs(shownBattery - batteryPercent) < BATTERY_REDRAW_STEP;
     bool shown = prefs.getULong64(PREFS_SHOWN_ID, 0) == activityId &&
                  prefs.getString(PREFS_SHOWN_FIRMWARE) == firmwareHash() &&
-                 prefs.getString(PREFS_SHOWN_NOTICE) == notice;
+                 prefs.getString(PREFS_SHOWN_NOTICE) == notice && batteryShown;
     prefs.end();
     return shown;
 }
 
-static void saveShownActivityId(uint64_t id, const String &notice = "") {
+static void saveShownActivityId(uint64_t id, const String &notice = "",
+                                int8_t batteryPercent = -1) {
     Preferences prefs;
     prefs.begin(PREFS_NAMESPACE, false);
     prefs.putULong64(PREFS_SHOWN_ID, id);
     prefs.putString(PREFS_SHOWN_FIRMWARE, firmwareHash());
     prefs.putString(PREFS_SHOWN_NOTICE, notice);
+    prefs.putChar(PREFS_SHOWN_BATTERY, batteryPercent);
     prefs.end();
 }
 
@@ -101,9 +112,10 @@ static void showUpdating(const char *newVersion) {
     saveShownActivityId(0);
 }
 
-// Loads the latest activity and draws it with the footer notice if it isn't on the display
-// already, or draws the error that occurred. Needs WiFi.
-static void showLastActivity(const Credentials &credentials, const String &notice) {
+// Loads the latest activity and draws it with the footer notice and battery charge if it isn't
+// on the display already, or draws the error that occurred. Needs WiFi.
+static void showLastActivity(const Credentials &credentials, const String &notice,
+                             int8_t batteryPercent) {
     String accessToken;
     StravaActivity activity;
     StravaError stravaError =
@@ -123,15 +135,15 @@ static void showLastActivity(const Credentials &credentials, const String &notic
     Serial.printf("%llu | %s | %s | %s | %.2f km\n", (unsigned long long)activity.id,
                   activity.name.c_str(), activity.type.c_str(), activity.date.c_str(),
                   activity.distance_km);
-    if (isAlreadyShown(activity.id, notice)) {
-        Serial.println("Activity is already shown by this firmware, not refreshing the display");
+    if (isAlreadyShown(activity.id, notice, batteryPercent)) {
+        Serial.println("Activity and battery are already shown by this firmware, not refreshing");
         return;
     }
 
     initDisplay();
-    drawActivity(activity, notice.c_str());
+    drawActivity(activity, notice.c_str(), batteryPercent);
     hibernateDisplay();
-    saveShownActivityId(activity.id, notice);
+    saveShownActivityId(activity.id, notice, batteryPercent);
 }
 
 [[noreturn]] static void sleepUntilNextFullHour() {
@@ -142,6 +154,11 @@ static void showLastActivity(const Credentials &credentials, const String &notic
 void setup() {
     Serial.begin(115200);
     printLocalTime(wokeFromDeepSleep() ? "Woke up at" : "Started at");
+
+    // before WiFi, whose current peaks pull the battery voltage down
+    const float batteryVolts = readBatteryVoltage();
+    const int8_t batteryPercent = ::batteryPercent(batteryVolts);
+    Serial.printf("Battery: %.2f V, %d %%\n", batteryVolts, batteryPercent);
 
     const Credentials credentials = loadCredentials();
     if (credentials.wifiSsid.isEmpty()) {
@@ -171,7 +188,7 @@ void setup() {
 
     printLocalTime("Refreshing at");
 
-    showLastActivity(credentials, notice);
+    showLastActivity(credentials, notice, batteryPercent);
     sleepUntilNextFullHour();
 }
 

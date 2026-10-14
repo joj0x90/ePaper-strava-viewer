@@ -40,6 +40,13 @@
 
 #define TEXTAREA_PADDING 8
 
+// Battery symbol in the footer's right corner, right of its charge in percent
+#define BATTERY_W 28
+#define BATTERY_H 14
+#define BATTERY_NUB_W 3
+#define BATTERY_NUB_H 6
+#define BATTERY_GAP 6
+
 // CS=15, DC=27, RST=26, BUSY=25
 static GxEPD2_BW<GxEPD2_750_T7, GxEPD2_750_T7::HEIGHT> display(GxEPD2_750_T7(15, 27, 26, 25));
 
@@ -367,17 +374,49 @@ static void drawActivityMap(const String &polyline) {
     }
 }
 
-// Firmware version, followed by the notice if there is one, e.g. a failed update.
-static void drawFooter(const char *notice = "") {
+// Draws "85%" and a battery symbol filled to match, ending at rightX and vertically centered
+// on the digits resting on baseline. Returns the width drawn.
+static int16_t drawBattery(int8_t percent, int16_t rightX, int16_t baseline) {
+    char text[5];
+    snprintf(text, sizeof(text), "%d%%", percent);
+    int16_t x1, y1;
+    uint16_t w, h;
+    display.getTextBounds(text, 0, baseline, &x1, &y1, &w, &h);
+
+    const int16_t bodyX = rightX - BATTERY_NUB_W - BATTERY_W;
+    const int16_t bodyY = y1 + (int16_t)h / 2 - BATTERY_H / 2;
+    display.drawRect(bodyX, bodyY, BATTERY_W, BATTERY_H, GxEPD_BLACK);
+    display.fillRect(bodyX + BATTERY_W, bodyY + (BATTERY_H - BATTERY_NUB_H) / 2, BATTERY_NUB_W,
+                     BATTERY_NUB_H, GxEPD_BLACK);
+    // filled level inside a 1 px white gap to the border
+    const int16_t levelW = (BATTERY_W - 4) * percent / 100;
+    display.fillRect(bodyX + 2, bodyY + 2, levelW, BATTERY_H - 4, GxEPD_BLACK);
+
+    const int16_t textX = bodyX - BATTERY_GAP - w;
+    display.setCursor(textX - x1, baseline);
+    display.print(text);
+    return rightX - textX;
+}
+
+// Firmware version, followed by the notice if there is one, e.g. a failed update, and the
+// battery charge in the right corner unless batteryPercent is negative (no battery).
+static void drawFooter(const char *notice = "", int8_t batteryPercent = -1) {
     display.setFont(&FreeSans12pt8b);
     const int16_t y = display.height() - (FOOTER_SIZE_Y / 2);
+
+    int16_t batteryW = 0;
+    if (batteryPercent >= 0) {
+        batteryW = drawBattery(batteryPercent, display.width() - HEADING_START_X, y);
+    }
 
     String text = FIRMWARE_VERSION;
     if (notice[0] != '\0') {
         text += " | ";
         text += notice;
     }
-    const String fitted = fitText(text.c_str(), display.width() - 2 * HEADING_START_X);
+    // keep the same distance to both edges, so the centered text never reaches the battery
+    const int16_t sideW = HEADING_START_X + (batteryW > 0 ? batteryW + BATTERY_GAP : 0);
+    const String fitted = fitText(text.c_str(), display.width() - 2 * sideW);
 
     // center the text horizontally, whatever its length
     int16_t x1, y1;
@@ -434,7 +473,7 @@ static void drawKudosComments(uint8_t kudos, uint8_t comments) {
     drawCountBadge(Icon::Comment, count, display.width() / 2 * 2 / 3);
 }
 
-void drawActivity(StravaActivity act, const char *footerNotice) {
+void drawActivity(StravaActivity act, const char *footerNotice, int8_t batteryPercent) {
     display.setFullWindow();
     display.firstPage();
     do {
@@ -454,7 +493,7 @@ void drawActivity(StravaActivity act, const char *footerNotice) {
 
         drawKudosComments(act.kudos_count, act.comment_count);
 
-        drawFooter(footerNotice);
+        drawFooter(footerNotice, batteryPercent);
 
     } while (display.nextPage());
 }

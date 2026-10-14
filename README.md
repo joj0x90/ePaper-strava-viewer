@@ -23,6 +23,7 @@ Show your Strava activities on a Waveshare 7.5" e-Paper display driven by the Wa
 | HT7333 LDO regulator | 3.3 V, low dropout, 4 µA quiescent current |
 | 2× 10 µF capacitor | Input and output capacitor of the HT7333 |
 | 470–1000 µF electrolytic capacitor | Buffers the WiFi current peaks |
+| 2× 100 kΩ resistor, 100 nF ceramic capacitor | Voltage divider for measuring the battery voltage |
 
 The charging board's output must **not** go to the driver board's 5V pin. The onboard regulator
 drops about 1 V, so the ESP32 gets 3.0 V or less and browns out (or the DW01 cuts the power) as
@@ -32,29 +33,32 @@ HT7333 powers the **3V3** pin directly:
 ```
                  TP4056 charging board
    Li-Ion        ┌────────────────────┐
-   cell     +────┤ B+            OUT+ ├──────┬──────────────┐
-            −────┤ B−            OUT− ├──┐   │              │
-                 └────────────────────┘  │  ═╪═ C1 10µF     │
-                                         │   │              │
-                                         │   │    HT7333    │
-                                         │   │  ┌────────┐  │
-                                         │   └──┤ VIN    │◄─┘
-                                         │      │        │
-                                         ├──────┤ GND    │
-                                         │      │        │
-                                         │   ┌──┤ VOUT   │
-                                         │   │  └────────┘
-                                         │   │
-                                         │   ├──── ═╪═ C2 10µF
-                                         │   ├──── ═╪═ C3 470µF (+ to VOUT)
-                                         │   │
-                 ESP32 e-Paper board     │   │
-                 ┌────────────────────┐  │   │
-                 │ 3V3 ◄──────────────┼──┼───┘
-                 │ GND ◄──────────────┼──┘
+   cell     +────┤ B+            OUT+ ├──────────┬────────────────────┬─────┐
+            −────┤ B−            OUT− ├──┐       │ +                  │     │
+                 └────────────────────┘  │      ═╪═ C1 10µF           │    ┌┴┐
+                                         │       │                    │    │ │ R1 100k
+                                         ├───────┘       HT7333       │    └┬┘
+                                         │             ┌────────┐     │     ├─────────┬─────────┐
+                                         │             │    VIN ├─────┘    ┌┴┐        │         │
+                                         ├─────────────┤ GND    │          │ │ R2    ═╪═ C4     │
+                                         │             │   VOUT ├─────┐    └┬┘ 100k   │ 100nF   │
+                                         │             └────────┘     │     └────┬────┘         │
+                                         │                            │         GND             │
+                                         │       ┌──────────┬─────────┤                         │
+                                         │     + │        + │         │                         │
+                                         │      ═╪═ C2     ═╪═ C3     │                         │
+                                         │       │  10µF    │  470µF  │                         │
+                                         ├───────┴──────────┘         │                         │
+                                         │                            │                         │
+                 ESP32 e-Paper board     │                            │                         │
+                 ┌────────────────────┐  │                            │                         │
+                 │ GND    ◄───────────┼──┘                            │                         │
+                 │ 3V3    ◄───────────┼───────────────────────────────┘                         │
+                 │ GPIO35 ◄───────────┼─────────────────────────────────────────────────────────┘
                  │ 5V/VIN  (unused)   │
                  └────────────────────┘
-   all capacitor "−" legs go to GND
+   "GND" marks a connection to the GND bus. "+" marks the positive capacitor leg
+   (polarity matters for the electrolytic C3).
 ```
 
 - **Pinout:** the TO-92 HT7333-A is **GND – VIN – VOUT** from left to right, looking at the flat,
@@ -65,6 +69,10 @@ HT7333 powers the **3V3** pin directly:
 - **C3 (470–1000 µF)** is strongly recommended: the HT7333 is only rated for 250 mA, while the
   ESP32 draws short peaks of about 300–400 mA when WiFi starts. C3 supplies them. If the board
   still resets while connecting to WiFi, use an LDO rated for 500 mA (e.g. MCP1825S-3302, XC6220).
+- **Battery voltage (R1, R2, C4):** the divider halves the battery voltage (3.0–4.2 V → 1.5–2.1 V)
+  for the ADC. It must sit on VBAT, not on 3V3, and use an ADC1 pin (GPIO 32–39); ADC2 pins don't
+  work while WiFi is active. It draws about 21 µA constantly; 2× 220 kΩ halves that. C4 keeps the
+  reading stable despite the high resistance, so place it close to the GPIO pin.
 - **Disconnect the battery before flashing via USB**, otherwise the onboard regulator and the
   HT7333 both drive the 3V3 rail.
 - Below about 3.4 V battery voltage the output follows the battery minus the dropout. The ESP32
