@@ -408,24 +408,6 @@ void drawMaxSpeed(Painter &p) {
     p.line(38.5f, 27, 33.5f, 34, w);
 }
 
-// min over km, like a fraction.
-void drawPace(Painter &p) {
-    const float w = 2.5f;
-    // min, x-height 9, baseline 14
-    drawLetterM(p, 4.5f, 14, 9, w);
-    p.line(21, 8, 21, 14, w);  // i
-    p.circle(21, 3, 1.7f);
-    drawLetterN(p, 25.5f, 14, 9, 4, w);
-
-    p.line(3, 20, 37, 20, w);
-
-    // km, x-height 9, baseline 36
-    p.line(7, 23, 7, 36, w);  // k
-    p.line(14, 27, 7.5f, 32.5f, w);
-    p.line(10, 30.5f, 14.5f, 36, w);
-    drawLetterM(p, 19, 36, 9, w);
-}
-
 // Scale of a ruler: baseline with long, medium and short tick marks.
 void drawRuler(Painter &p) {
     // rectangles instead of lines: square ends without the bumps of round caps
@@ -447,6 +429,14 @@ void drawFlame(Painter &p) {
     p.polygon(inner, 5, 20, 27);
     p.circle(20, 31, 6);
     p.cut(false);
+}
+
+// Heart: two circles on a triangle with its tip at the bottom.
+void drawHeart(Painter &p) {
+    p.circle(13, 15, 9);
+    p.circle(27, 15, 9);
+    const float body[] = {4.6f, 18, 20, 12, 35.4f, 18, 20, 35};
+    p.polygon(body, 4, 20, 20);
 }
 
 }  // namespace
@@ -494,8 +484,8 @@ void drawIcon(Adafruit_GFX &gfx, Icon icon, int16_t x, int16_t y, int16_t size, 
         case Icon::Comment:       drawSpeechBubble(p); break;
         case Icon::AvgSpeed:      drawAvgSpeed(p); break;
         case Icon::MaxSpeed:      drawMaxSpeed(p); break;
-        case Icon::Pace:          drawPace(p); break;
         case Icon::Calories:      drawFlame(p); break;
         case Icon::Distance:      drawRuler(p); break;
+        case Icon::HeartRate:     drawHeart(p); break;
     }
 }

@@ -28,6 +28,7 @@ enum class Icon : uint8_t {
     Pace,         // "min" over "km", for the pace
     Calories,     // flame, for burned kcal
     Distance,     // ruler scale
+    HeartRate,    // heart
 };
 
 // Maps a Strava sport_type (e.g. "TrailRun", "GravelRide") to its icon.

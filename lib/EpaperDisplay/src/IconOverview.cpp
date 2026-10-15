@@ -16,16 +16,11 @@ struct ExtraIcon {
     const char *label;
 };
 const ExtraIcon EXTRA_ICONS[] = {
-    {Icon::Generic, "(other)"},
-    {Icon::Error, "(error)"},
-    {Icon::Achievement, "(achievement)"},
-    {Icon::Kudos, "(kudos)"},
-    {Icon::Comment, "(comment)"},
-    {Icon::AvgSpeed, "(avg speed)"},
-    {Icon::MaxSpeed, "(max speed)"},
-    {Icon::Pace, "(pace)"},
-    {Icon::Calories, "(kcal)"},
-    {Icon::Distance, "(distance)"},
+    {Icon::Generic, "(other)"},           {Icon::Error, "(error)"},
+    {Icon::Achievement, "(achievement)"}, {Icon::Kudos, "(kudos)"},
+    {Icon::Comment, "(comment)"},         {Icon::AvgSpeed, "(avg speed)"},
+    {Icon::MaxSpeed, "(max speed)"},      {Icon::Calories, "(kcal)"},
+    {Icon::Distance, "(distance)"},       {Icon::HeartRate, "(heart rate)"},
 };
 const uint8_t EXTRA_CELLS = sizeof(EXTRA_ICONS) / sizeof(EXTRA_ICONS[0]);
 

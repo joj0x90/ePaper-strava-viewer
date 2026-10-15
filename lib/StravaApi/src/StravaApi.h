@@ -3,6 +3,17 @@
 
 #include <Arduino.h>
 
+// Number of bars of the heart rate chart
+#define HEART_RATE_BARS 60
+
+// Heart rate over the course of the activity, from fetchHeartRate(): the average of each of
+// count equal parts of the recorded samples. Activities with fewer samples than
+// HEART_RATE_BARS get one bar per sample.
+struct HeartRateProfile {
+    uint8_t bpm[HEART_RATE_BARS];  // 0 = no valid sample in this part, e.g. a sensor dropout
+    uint8_t count = 0;             // number of bars, 0 = not loaded
+};
+
 struct StravaActivity {
     uint64_t id;         // Strava activity ID, the number in strava.com/activities/<id>
     String type;         // e.g. "Trail Run"
@@ -21,6 +32,10 @@ struct StravaActivity {
     float average_speed;
     float max_speed;
     float burned_calories;
+    bool has_heartrate;       // recorded with a heart rate sensor
+    float average_heartrate;  // in bpm, 0 without sensor
+    float max_heartrate;      // in bpm, 0 without sensor
+    HeartRateProfile heart_rate;  // only filled by fetchHeartRate()
 };
 
 enum class StravaErrorCode : uint8_t {
@@ -57,5 +72,9 @@ StravaError fetchLastActivity(const String &accessToken, StravaActivity &activit
 // Loads one activity by its Strava ID (the number in strava.com/activities/<id>).
 // Unlike fetchLastActivity(), this also fills description, calories and device_name.
 StravaError fetchActivityById(const String &accessToken, uint64_t id, StravaActivity &activity);
+
+// Loads the heart rate samples of the activity (one extra request) into activity.heart_rate.
+// Leaves count at 0 if the activity has no heart rate data.
+StravaError fetchHeartRate(const String &accessToken, StravaActivity &activity);
 
 #endif  // STRAVA_API_H

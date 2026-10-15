@@ -133,6 +133,15 @@ static StravaError showLastActivity(const Credentials &credentials, const String
         Serial.println("Activity and battery are already shown by this firmware, not refreshing");
         return stravaError;
     }
+    // the chart takes the map's place, so it's only loaded (one more request) without a map
+    if (!activity.showMap && activity.has_heartrate) {
+        const StravaError heartRateError = fetchHeartRate(accessToken, activity);
+        if (!heartRateError.ok()) {  // not worth an error screen: drawn without the chart
+            Serial.printf("Heart rate error %d (HTTP %d): %s\n%s\n",
+                          static_cast<int>(heartRateError.code), heartRateError.httpStatus,
+                          heartRateError.message(), heartRateError.detail.c_str());
+        }
+    }
 
     initDisplay();
     drawActivity(activity, notice.c_str(), batteryPercent);

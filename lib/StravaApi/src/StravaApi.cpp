@@ -4,6 +4,8 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 
+#include "SampleAverager.h"
+
 static WiFiClientSecure client;
 
 static void initClient() {
@@ -120,6 +122,9 @@ static void addActivityFilter(JsonObject filter) {
     filter["average_speed"] = true;
     filter["max_speed"] = true;
     filter["calories"] = true;
+    filter["has_heartrate"] = true;
+    filter["average_heartrate"] = true;
+    filter["max_heartrate"] = true;
 }
 
 static void parseActivity(JsonObjectConst a, StravaActivity &activity) {
@@ -140,6 +145,10 @@ static void parseActivity(JsonObjectConst a, StravaActivity &activity) {
     activity.average_speed = a["average_speed"].as<float>();
     activity.max_speed = a["max_speed"].as<float>();
     activity.burned_calories = a["calories"].as<float>();
+    activity.has_heartrate = a["has_heartrate"] | false;
+    activity.average_heartrate = a["average_heartrate"] | 0.0f;
+    activity.max_heartrate = a["max_heartrate"] | 0.0f;
+    activity.heart_rate.count = 0;
 }
 
 // Passes reads through to another stream and records what was read, so a parse
@@ -178,12 +187,11 @@ private:
     size_t tailPos_ = 0;
 };
 
-// GETs an authorized Strava API URL and parses the filtered JSON response into doc.
-static StravaError getJson(const String &url, const String &accessToken, const JsonDocument &filter,
-                           JsonDocument &doc) {
+// GETs an authorized Strava API URL. If it answers with 200, the response can be read from
+// http.getStream(); otherwise http is already ended.
+static StravaError startGet(HTTPClient &http, const String &url, const String &accessToken) {
     initClient();
-    HTTPClient http;
-    http.useHTTP10(true);  // no chunked encoding, so the stream below is plain JSON
+    http.useHTTP10(true);  // no chunked encoding, so the response stream is plain JSON
     http.begin(client, url);
     http.addHeader("Authorization", "Bearer " + accessToken);
     const char *headerKeys[] = {"Transfer-Encoding", "Content-Encoding"};
@@ -198,6 +206,15 @@ static StravaError getJson(const String &url, const String &accessToken, const J
                                    : StravaErrorCode::ActivityRequestFailed;
         return makeError(code, status, response);
     }
+    return StravaError();
+}
+
+// GETs an authorized Strava API URL and parses the filtered JSON response into doc.
+static StravaError getJson(const String &url, const String &accessToken, const JsonDocument &filter,
+                           JsonDocument &doc) {
+    HTTPClient http;
+    StravaError error = startGet(http, url, accessToken);
+    if (!error.ok()) return error;
 
     // Parse straight from the connection: detailed activities can be larger than the free RAM
     unsigned long start = millis();
@@ -213,7 +230,7 @@ static StravaError getJson(const String &url, const String &accessToken, const J
                  http.header("Content-Encoding").c_str());
         String detail = String(info) + stream.tail();
         http.end();
-        return makeError(StravaErrorCode::ActivityInvalidJson, status, detail);
+        return makeError(StravaErrorCode::ActivityInvalidJson, HTTP_CODE_OK, detail);
     }
     http.end();
     return StravaError();
@@ -249,5 +266,83 @@ StravaError fetchActivityById(const String &accessToken, uint64_t id, StravaActi
     if (!error.ok()) return error;
 
     parseActivity(doc.as<JsonObjectConst>(), activity);
+    return StravaError();
+}
+
+// Reads one character, -1 at the end of the response (or after the stream's timeout)
+static int readChar(Stream &stream) {
+    char c;
+    return stream.readBytes(&c, 1) == 1 ? (uint8_t)c : -1;
+}
+
+// Reads the response of the streams endpoint up to the end of the "heartrate" stream's data
+// array, and averages its numbers. Parsed by hand, as an activity can have tens of thousands of
+// samples, which don't fit into the RAM as a JsonDocument. The response looks like
+// {"heartrate":{"data":[92,95,...],"series_type":"distance",...},"distance":{...}}; its strings
+// contain no brackets. Returns false if it ended before the heart rate data did.
+static bool readHeartRateSamples(Stream &stream, SampleAverager &averager) {
+    static const char KEY[] = "\"heartrate\"";
+    size_t matched = 0;  // characters of KEY matched so far
+    int depth = 0;       // nesting of {}
+    int c;
+    // find the key at the top level, then the start of its data array
+    while (true) {
+        c = readChar(stream);
+        if (c < 0) return false;
+        if (c == '{') depth++;
+        if (c == '}' && --depth == 0) return true;  // end of the response: no heart rate stream
+        matched = c == KEY[matched] ? matched + 1 : (c == KEY[0] ? 1 : 0);
+        if (matched == sizeof(KEY) - 1 && depth == 1) break;
+    }
+    do {
+        c = readChar(stream);
+        if (c < 0 || c == '}') return false;  // a heart rate object without data
+    } while (c != '[');
+
+    uint32_t value = 0;
+    bool inNumber = false, inFraction = false;
+    while ((c = readChar(stream)) >= 0) {
+        if (isdigit(c)) {
+            if (!inFraction) value = min<uint32_t>(value * 10 + (c - '0'), UINT16_MAX);
+            inNumber = true;
+        } else if (c == '.') {
+            inFraction = true;  // integers are expected, but cut off decimals just in case
+        } else {
+            if (inNumber) averager.add(value);
+            value = 0;
+            inNumber = inFraction = false;
+            if (c == ']') return true;
+        }
+    }
+    return false;
+}
+
+StravaError fetchHeartRate(const String &accessToken, StravaActivity &activity) {
+    activity.heart_rate.count = 0;
+    char url[112];
+    snprintf(url, sizeof(url),
+             "https://www.strava.com/api/v3/activities/%llu/streams?keys=heartrate&key_by_type=true",
+             (unsigned long long)activity.id);
+
+    HTTPClient http;
+    StravaError error = startGet(http, url, accessToken);
+    if (!error.ok()) return error;
+
+    static SampleAverager averager;  // 8 KB, too large for the stack
+    averager.reset();
+    ReadRecorder stream(http.getStream(), 20000);
+    const bool complete = readHeartRateSamples(stream, averager);
+    http.end();
+    if (!complete) {
+        char info[64];
+        snprintf(info, sizeof(info), "heart rate stream ended after %u bytes, last bytes:\n",
+                 (unsigned)stream.bytesRead());
+        return makeError(StravaErrorCode::ActivityInvalidJson, HTTP_CODE_OK,
+                         String(info) + stream.tail());
+    }
+
+    activity.heart_rate.count = averager.averages(activity.heart_rate.bpm, HEART_RATE_BARS);
+    Serial.printf("Heart rate: %lu samples in %u bars\n", (unsigned long)averager.sampleCount(),
+                  activity.heart_rate.count);
     return StravaError();
 }

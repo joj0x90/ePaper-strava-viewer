@@ -6,6 +6,9 @@ Show your Strava activities on a Waveshare 7.5" e-Paper display driven by the Wa
 
 ![The e-paper display showing a Strava activity: name, date, distance and route map](docs/preview.jpg)
 
+Activities without a route (e.g. pool swims, indoor workouts) show a bar chart of the heart rate
+in place of the map, if they were recorded with a heart rate sensor.
+
 ## Hardware
 
 | Part | Notes |
