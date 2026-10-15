@@ -6,6 +6,7 @@
 #include <WiFi.h>
 
 #include "AppIcon.h"
+#include "OtaUpdate.h"
 #include "Settings.h"
 #include "StravaApi.h"
 
@@ -72,6 +73,7 @@ a.button{display:block;box-sizing:border-box;text-align:center;text-decoration:n
 <tr><td>Connection</td><td>%CONNECTION%</td></tr>
 <tr><td>Strava</td><td>%STRAVA%</td></tr>
 </table>
+%UPDATE%
 
 <form method="post" action="/save">
 <!-- Enter in a field presses the first button: Save, not Connect with Strava -->
@@ -170,6 +172,23 @@ document.getElementById('clientId').addEventListener('paste', pasteApp);
 document.getElementById('clientSecret').addEventListener('paste', pasteApp);
 </script>
 </body></html>
+)html";
+
+// %UPDATE% if a newer release was found, in the normal WiFi: the download needs internet
+static const char UPDATE_FORM[] = R"html(
+<h2>Firmware update</h2>
+<p>Version <b>%NEW_VERSION%</b> is available.
+<a href="https://github.com/joj0x90/ePaper-strava-viewer/releases/tag/%NEW_VERSION%" target="_blank" rel="noopener">What's new</a></p>
+<form method="post" action="/update" onsubmit="return confirm('Install %NEW_VERSION% now? The device restarts afterwards.')">
+<button type="submit">Install update</button>
+</form>
+)html";
+
+// %UPDATE% if a newer release was found, in the device's own WiFi
+static const char UPDATE_OFFLINE[] = R"html(
+<h2>Firmware update</h2>
+<p class="note">Version <b>%NEW_VERSION%</b> is available. Installing it needs internet: save
+the WiFi first, then open this page in your WiFi with the button on the device.</p>
 )html";
 
 // %STRAVA_CONNECT% in the normal WiFi: authorizing needs internet. Both buttons first store the
@@ -353,6 +372,13 @@ static void handleRoot() {
     page.replace("%SECRET_HINT%", storedHint(c.stravaClientSecret));
     page.replace("%TOKEN_HINT%", storedHint(c.stravaRefreshToken));
     page.replace("%STRAVA_CONNECT%", usingAccessPoint ? STRAVA_OFFLINE : STRAVA_CONNECT);
+    const String update = availableUpdate();
+    if (update.isEmpty()) {
+        page.replace("%UPDATE%", "");
+    } else {
+        page.replace("%UPDATE%", usingAccessPoint ? UPDATE_OFFLINE : UPDATE_FORM);
+        page.replace("%NEW_VERSION%", htmlEscape(update));
+    }
     page.replace("%BANNER%", banner.isEmpty()
                                  ? String()
                                  : String("<p class=\"banner ") + (bannerIsError ? "error" : "ok") +
@@ -496,6 +522,18 @@ static void handleReset() {
     finished = true;
 }
 
+static void handleUpdate() {
+    const String update = availableUpdate();
+    if (usingAccessPoint || update.isEmpty()) return redirectHome();  // the page offered none
+    Serial.printf("Setup: installing %s\n", update.c_str());
+    sendAnswer("Installing the update",
+               "The device downloads " + htmlEscape(update) +
+                   " and restarts with it, this can take a minute. The display shows the progress. "
+                   "You can close this page.");
+    result = SetupResult::Update;
+    finished = true;
+}
+
 // The icon to upload when creating the Strava API application (tools/app_icon/make_icon.py)
 static void handleAppIcon() {
     server.sendHeader("Content-Disposition", "attachment; filename=\"strava-viewer-icon.png\"");
@@ -545,6 +583,7 @@ String startSetupPortal(bool accessPoint, const DeviceStatus &status, uint32_t d
     server.on("/save", HTTP_POST, handleSave);
     server.on("/reset", HTTP_POST, handleReset);
     server.on("/app-icon.png", HTTP_GET, handleAppIcon);
+    server.on("/update", HTTP_POST, handleUpdate);
     server.on("/strava/connect", HTTP_POST, handleStravaConnect);
     server.on("/strava/callback", HTTP_GET, handleStravaCallback);
     server.on("/strava/code", HTTP_POST, handleStravaCode);

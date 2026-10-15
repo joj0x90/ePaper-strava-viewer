@@ -439,6 +439,16 @@ void drawHeart(Painter &p) {
     p.polygon(body, 4, 20, 20);
 }
 
+// Bell: dome and flaring body on a rim, with the knob on top and the clapper below.
+void drawBell(Painter &p) {
+    p.circle(20, 4.5f, 3);
+    p.circle(20, 16, 10);
+    const float body[] = {10, 16, 30, 16, 34, 29, 6, 29};
+    p.polygon(body, 4, 20, 22);
+    p.rect(3, 28, 34, 4.5f, 2);
+    p.circle(20, 35.5f, 4);
+}
+
 }  // namespace
 
 uint8_t sportTypeCount() {
@@ -487,5 +497,6 @@ void drawIcon(Adafruit_GFX &gfx, Icon icon, int16_t x, int16_t y, int16_t size, 
         case Icon::Calories:      drawFlame(p); break;
         case Icon::Distance:      drawRuler(p); break;
         case Icon::HeartRate:     drawHeart(p); break;
+        case Icon::Bell:          drawBell(p); break;
     }
 }

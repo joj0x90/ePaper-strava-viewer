@@ -21,6 +21,7 @@ const ExtraIcon EXTRA_ICONS[] = {
     {Icon::Comment, "(comment)"},         {Icon::AvgSpeed, "(avg speed)"},
     {Icon::MaxSpeed, "(max speed)"},      {Icon::Calories, "(kcal)"},
     {Icon::Distance, "(distance)"},       {Icon::HeartRate, "(heart rate)"},
+    {Icon::Bell, "(update)"},
 };
 const uint8_t EXTRA_CELLS = sizeof(EXTRA_ICONS) / sizeof(EXTRA_ICONS[0]);
 

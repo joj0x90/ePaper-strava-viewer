@@ -240,6 +240,11 @@ Strava credentials. **Connect with Strava** gets the refresh token from Strava (
 **Save** stores the settings, closes the page and shows the latest activity. **Reset device**
 deletes all settings (the whole NVS) and restarts. The own WiFi then gets a new password.
 
+**Firmware updates** aren't installed automatically. Every hour, and whenever the setup page
+opens in your WiFi, the device checks the latest GitHub release. If it's newer, a bell appears in
+the footer's left corner, and the setup page shows **Install update**, which downloads it and
+restarts with it. Only release builds check; a firmware flashed via USB never gets an update.
+
 If the Strava credentials are missing or rejected after saving or switching the device on, it
 opens the setup page in the WiFi right away, with the reason as the heading. During the hourly
 updates it only shows the error and that the button opens the setup page. If the WiFi isn't found,

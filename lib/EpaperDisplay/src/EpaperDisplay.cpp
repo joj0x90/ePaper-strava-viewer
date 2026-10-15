@@ -56,6 +56,8 @@
 #define BATTERY_NUB_W 3
 #define BATTERY_NUB_H 6
 #define BATTERY_GAP 6
+// Bell in the footer's left corner while a firmware update is available
+#define BELL_SIZE 18
 
 // CS=15, DC=27, RST=26, BUSY=25
 static GxEPD2_BW<GxEPD2_750_T7, GxEPD2_750_T7::HEIGHT> display(GxEPD2_750_T7(15, 27, 26, 25));
@@ -415,9 +417,22 @@ static int16_t drawBattery(int8_t percent, int16_t rightX, int16_t baseline) {
     return rightX - textX;
 }
 
-// Firmware version, followed by the notice if there is one, e.g. a failed update, and the
-// battery charge in the right corner unless batteryPercent is negative (no battery).
-static void drawFooter(const char *notice = "", int8_t batteryPercent = -1) {
+// Bell at leftX, vertically centered on digits resting on baseline (like the battery).
+// Returns the width drawn.
+static int16_t drawUpdateBell(int16_t leftX, int16_t baseline) {
+    int16_t x1, y1;
+    uint16_t w, h;
+    display.getTextBounds("0", 0, baseline, &x1, &y1, &w, &h);
+    drawIcon(display, Icon::Bell, leftX, y1 + (int16_t)h / 2 - BELL_SIZE / 2, BELL_SIZE,
+             GxEPD_BLACK, GxEPD_WHITE);
+    return BELL_SIZE;
+}
+
+// Firmware version, followed by the notice if there is one, e.g. a failed update, the battery
+// charge in the right corner unless batteryPercent is negative (no battery), and a bell in the
+// left corner if a firmware update is available.
+static void drawFooter(const char *notice = "", int8_t batteryPercent = -1,
+                       bool updateAvailable = false) {
     display.setFont(&FreeSans12pt8b);
     const int16_t y = display.height() - (FOOTER_SIZE_Y / 2);
 
@@ -425,14 +440,17 @@ static void drawFooter(const char *notice = "", int8_t batteryPercent = -1) {
     if (batteryPercent >= 0) {
         batteryW = drawBattery(batteryPercent, display.width() - HEADING_START_X, y);
     }
+    const int16_t bellW = updateAvailable ? drawUpdateBell(HEADING_START_X, y) : 0;
 
     String text = FIRMWARE_VERSION;
     if (notice[0] != '\0') {
         text += " | ";
         text += notice;
     }
-    // keep the same distance to both edges, so the centered text never reaches the battery
-    const int16_t sideW = HEADING_START_X + (batteryW > 0 ? batteryW + BATTERY_GAP : 0);
+    // keep the same distance to both edges, so the centered text never reaches the battery or
+    // the bell
+    const int16_t cornerW = max(batteryW, bellW);
+    const int16_t sideW = HEADING_START_X + (cornerW > 0 ? cornerW + BATTERY_GAP : 0);
     const String fitted = fitText(text.c_str(), display.width() - 2 * sideW);
 
     // center the text horizontally, whatever its length
@@ -490,7 +508,8 @@ static void drawKudosComments(uint8_t kudos, uint8_t comments) {
     drawCountBadge(Icon::Comment, count, display.width() / 2 * 2 / 3);
 }
 
-void drawActivity(StravaActivity act, const char *footerNotice, int8_t batteryPercent) {
+void drawActivity(StravaActivity act, const char *footerNotice, int8_t batteryPercent,
+                  bool updateAvailable) {
     display.setFullWindow();
     display.firstPage();
     do {
@@ -520,7 +539,7 @@ void drawActivity(StravaActivity act, const char *footerNotice, int8_t batteryPe
 
         drawKudosComments(act.kudos_count, act.comment_count);
 
-        drawFooter(footerNotice, batteryPercent);
+        drawFooter(footerNotice, batteryPercent, updateAvailable);
 
     } while (display.nextPage());
 }

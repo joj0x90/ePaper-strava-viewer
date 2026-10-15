@@ -29,6 +29,7 @@ enum class Icon : uint8_t {
     Calories,     // flame, for burned kcal
     Distance,     // ruler scale
     HeartRate,    // heart
+    Bell,         // notification, e.g. a firmware update is available
 };
 
 // Maps a Strava sport_type (e.g. "TrailRun", "GravelRide") to its icon.

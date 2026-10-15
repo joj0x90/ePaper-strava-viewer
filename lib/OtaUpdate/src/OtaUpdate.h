@@ -12,10 +12,17 @@
 // Called with the new version right before its download starts, e.g. to tell the user.
 typedef void (*UpdateFoundCallback)(const char *newVersion);
 
-// Checks the latest GitHub release and, if its tag differs from FIRMWARE_VERSION, installs its
-// firmware.bin and restarts. Only release builds update themselves, so a firmware flashed via
-// USB during development isn't replaced. Needs WiFi; returns if there is nothing to do ("") or
-// with a short error for the display, e.g. "unknown certificate".
-String updateFirmwareIfAvailable(UpdateFoundCallback onUpdateFound);
+// Checks the latest GitHub release and remembers (in NVS) whether its tag differs from
+// FIRMWARE_VERSION, for availableUpdate(). Only release builds look for updates, so a firmware
+// flashed via USB during development isn't offered a replacement. Needs WiFi; returns "" or a
+// short error for the display, e.g. "unknown certificate", which keeps the remembered result.
+String checkForUpdate();
+
+// The newer release found by the last checkForUpdate(), or "" if there is none.
+String availableUpdate();
+
+// Installs the firmware.bin of the release tag and restarts. Needs WiFi; only returns if the
+// update failed, with a short error for the display.
+String installUpdate(const String &tag, UpdateFoundCallback onUpdateFound);
 
 #endif  // OTA_UPDATE_H

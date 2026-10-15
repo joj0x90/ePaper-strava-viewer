@@ -31,11 +31,13 @@ static const char *PREFS_SHOWN_ID = "shownId";
 static const char *PREFS_SHOWN_FIRMWARE = "shownFw";
 static const char *PREFS_SHOWN_NOTICE = "shownNotice";
 static const char *PREFS_SHOWN_BATTERY = "shownBattery";
+static const char *PREFS_SHOWN_BELL = "shownBell";
 // The battery charge alone redraws the display only after it changed by this many percent, so
 // ADC noise doesn't cost an e-paper refresh (and battery) every hour.
 static const int8_t BATTERY_REDRAW_STEP = 5;
 
-static bool isAlreadyShown(uint64_t activityId, const String &notice, int8_t batteryPercent) {
+static bool isAlreadyShown(uint64_t activityId, const String &notice, int8_t batteryPercent,
+                           bool updateBell) {
     Preferences prefs;
     if (!prefs.begin(PREFS_NAMESPACE, true)) return false;  // namespace doesn't exist yet
     const int8_t shownBattery = prefs.getChar(PREFS_SHOWN_BATTERY, -1);
@@ -44,19 +46,21 @@ static bool isAlreadyShown(uint64_t activityId, const String &notice, int8_t bat
                               abs(shownBattery - batteryPercent) < BATTERY_REDRAW_STEP;
     bool shown = prefs.getULong64(PREFS_SHOWN_ID, 0) == activityId &&
                  prefs.getString(PREFS_SHOWN_FIRMWARE) == firmwareHash() &&
-                 prefs.getString(PREFS_SHOWN_NOTICE) == notice && batteryShown;
+                 prefs.getString(PREFS_SHOWN_NOTICE) == notice && batteryShown &&
+                 prefs.getBool(PREFS_SHOWN_BELL, false) == updateBell;
     prefs.end();
     return shown;
 }
 
 static void saveShownActivityId(uint64_t id, const String &notice = "",
-                                int8_t batteryPercent = -1) {
+                                int8_t batteryPercent = -1, bool updateBell = false) {
     Preferences prefs;
     prefs.begin(PREFS_NAMESPACE, false);
     prefs.putULong64(PREFS_SHOWN_ID, id);
     prefs.putString(PREFS_SHOWN_FIRMWARE, firmwareHash());
     prefs.putString(PREFS_SHOWN_NOTICE, notice);
     prefs.putChar(PREFS_SHOWN_BATTERY, batteryPercent);
+    prefs.putBool(PREFS_SHOWN_BELL, updateBell);
     prefs.end();
 }
 
@@ -105,11 +109,11 @@ static void showUpdating(const char *newVersion) {
     saveShownActivityId(0);
 }
 
-// Loads the latest activity and draws it with the footer notice and battery charge if it isn't
-// on the display already, or draws the error that occurred. A rejected login is only returned:
-// the caller decides how to get new credentials. Needs WiFi.
+// Loads the latest activity and draws it with the footer notice, battery charge and update bell
+// if it isn't on the display already, or draws the error that occurred. A rejected login is only
+// returned: the caller decides how to get new credentials. Needs WiFi.
 static StravaError showLastActivity(const Credentials &credentials, const String &notice,
-                                    int8_t batteryPercent) {
+                                    int8_t batteryPercent, bool updateBell) {
     String accessToken;
     StravaActivity activity;
     StravaError stravaError =
@@ -129,8 +133,9 @@ static StravaError showLastActivity(const Credentials &credentials, const String
     Serial.printf("%llu | %s | %s | %s | %.2f km\n", (unsigned long long)activity.id,
                   activity.name.c_str(), activity.type.c_str(), activity.date.c_str(),
                   activity.distance_km);
-    if (isAlreadyShown(activity.id, notice, batteryPercent)) {
-        Serial.println("Activity and battery are already shown by this firmware, not refreshing");
+    if (isAlreadyShown(activity.id, notice, batteryPercent, updateBell)) {
+        Serial.println("Activity, battery and bell are already shown by this firmware, "
+                       "not refreshing");
         return stravaError;
     }
     // the chart takes the map's place, so it's only loaded (one more request) without a map
@@ -144,9 +149,9 @@ static StravaError showLastActivity(const Credentials &credentials, const String
     }
 
     initDisplay();
-    drawActivity(activity, notice.c_str(), batteryPercent);
+    drawActivity(activity, notice.c_str(), batteryPercent, updateBell);
     hibernateDisplay();
-    saveShownActivityId(activity.id, notice, batteryPercent);
+    saveShownActivityId(activity.id, notice, batteryPercent, updateBell);
     return stravaError;
 }
 
@@ -156,11 +161,13 @@ static StravaError showLastActivity(const Credentials &credentials, const String
 }
 
 [[noreturn]] static void showActivityAndSleep(const Credentials &credentials,
-                                              const DeviceStatus &status, bool mayOpenSetup);
+                                              const DeviceStatus &status, bool mayOpenSetup,
+                                              const String &updateError = "");
 
 // Opens the setup page for SETUP_MINUTES: in the WiFi if it's connected or connects, otherwise in
 // the device's own access point, and shows how to reach it, with the message (why) if there is
-// one. Saving or resetting restarts the device with the new settings. When the time is up, it
+// one. Saving or resetting restarts the device with the new settings; installing an update
+// restarts it with the new firmware, or shows the activity with the error. When the time is up, it
 // continues with the settings it has, without opening the setup page again, so missing
 // credentials can't keep it in setup mode; without WiFi credentials it sleeps until the button.
 [[noreturn]] static void runSetupMode(const Credentials &credentials, const DeviceStatus &status,
@@ -169,6 +176,8 @@ static StravaError showLastActivity(const Credentials &credentials, const String
         WiFi.isConnected() ||
         (!credentials.wifiSsid.isEmpty() &&
          connectWifi(credentials.wifiSsid.c_str(), credentials.wifiPassword.c_str()).ok());
+    // so the setup page offers a release that came out since the last hourly check
+    if (inWifi) checkForUpdate();
     const String url = startSetupPortal(!inWifi, status, SETUP_MINUTES * 60000UL);
     Serial.printf("Setup mode for %u minutes: %s\n", SETUP_MINUTES, url.c_str());
 
@@ -183,7 +192,16 @@ static StravaError showLastActivity(const Credentials &credentials, const String
     hibernateDisplay();
     saveShownActivityId(0);
 
-    if (runSetupPortal() != SetupResult::TimedOut) esp_restart();
+    const SetupResult result = runSetupPortal();
+    if (result == SetupResult::Update) {
+        // the setup page offers it only in the WiFi, which the portal switched off afterwards
+        String error = "WiFi failed";
+        if (connectWifi(credentials.wifiSsid.c_str(), credentials.wifiPassword.c_str()).ok()) {
+            error = installUpdate(availableUpdate(), showUpdating);  // restarts on success
+        }
+        showActivityAndSleep(credentials, status, false, "Update failed: " + error);
+    }
+    if (result != SetupResult::TimedOut) esp_restart();
 
     // nothing was saved, so the credentials are still the same
     if (credentials.wifiSsid.isEmpty()) {
@@ -194,12 +212,14 @@ static StravaError showLastActivity(const Credentials &credentials, const String
     showActivityAndSleep(credentials, status, false);
 }
 
-// Connects to the WiFi, installs a new release if there is one, shows the latest activity and
-// sleeps until the next full hour. With mayOpenSetup, missing or rejected Strava credentials open
-// the setup page in the WiFi; otherwise they're only shown, so a broken login doesn't keep the
-// device in setup mode every hour.
+// Connects to the WiFi, checks for a new release (shown as a bell, installed from the setup
+// page), shows the latest activity and sleeps until the next full hour. With mayOpenSetup,
+// missing or rejected Strava credentials open the setup page in the WiFi; otherwise they're only
+// shown, so a broken login doesn't keep the device in setup mode every hour. updateError, from an
+// update that failed right before, is shown in the footer instead of the check's error.
 [[noreturn]] static void showActivityAndSleep(const Credentials &credentials,
-                                              const DeviceStatus &status, bool mayOpenSetup) {
+                                              const DeviceStatus &status, bool mayOpenSetup,
+                                              const String &updateError) {
     WifiError wifiError =
         connectWifi(credentials.wifiSsid.c_str(), credentials.wifiPassword.c_str());
     if (!wifiError.ok()) {
@@ -215,9 +235,10 @@ static StravaError showLastActivity(const Credentials &credentials, const String
         printLocalTime("Woke up too early, it's");
         sleepUntilNextFullHour();
     }
-    // before the display, so a release that breaks drawing can still be replaced
-    const String updateError = updateFirmwareIfAvailable(showUpdating);
-    const String notice = updateError.isEmpty() ? "" : "Update failed: " + updateError;
+    const String checkError = checkForUpdate();
+    String notice = updateError;
+    if (notice.isEmpty() && !checkError.isEmpty()) notice = "Update check failed: " + checkError;
+    const bool updateBell = !availableUpdate().isEmpty();
 
     if (!hasStravaCredentials(credentials)) {
         const char *message = "Strava isn't set up yet";
@@ -229,7 +250,8 @@ static StravaError showLastActivity(const Credentials &credentials, const String
     }
 
     printLocalTime("Refreshing at");
-    const StravaError stravaError = showLastActivity(credentials, notice, status.batteryPercent);
+    const StravaError stravaError =
+        showLastActivity(credentials, notice, status.batteryPercent, updateBell);
     if (isLoginRejected(stravaError)) {
         if (mayOpenSetup) runSetupMode(credentials, status, loginRejectedMessage(stravaError));
         showSetupHint("Error:", loginRejectedMessage(stravaError), SetupHint::StravaFailed);
