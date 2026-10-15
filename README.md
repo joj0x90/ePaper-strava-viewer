@@ -169,10 +169,14 @@ void loop() {
 
 ### 2. Strava API credentials
 
-1. Log in to Strava and go to <https://www.strava.com/settings/api>.
-2. Create an application. Set **Authorization Callback Domain** to `strava-viewer.local`.
+1. Open the [setup page](#setup-page) and expand *Create the Strava API application (once)*
+   (it's open as long as no Client ID is stored). It links to
+   <https://www.strava.com/settings/api>, lists every value for the form with a copy button
+   (**Authorization Callback Domain**: `strava-viewer.local`) and offers the app icon
+   ([docs/app_icon.png](docs/app_icon.png)) for download.
+2. Create the application at Strava with these values and upload the icon.
 3. Open the [setup page](#setup-page) in your WiFi, copy the **Client ID** and **Client Secret**
-   into it and click **Connect with Strava**. Authorize the app at Strava (keep *View data about
+   into it (or paste the whole copied *My API Application* page into one of the fields) and click **Connect with Strava**. Authorize the app at Strava (keep *View data about
    your private activities* checked). Strava leads you back to the setup page, which shows
    *Strava is connected (…)*. Click **Save** to show your latest activity.
 

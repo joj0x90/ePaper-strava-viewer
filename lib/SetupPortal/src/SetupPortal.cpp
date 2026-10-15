@@ -5,6 +5,7 @@
 #include <WebServer.h>
 #include <WiFi.h>
 
+#include "AppIcon.h"
 #include "Settings.h"
 #include "StravaApi.h"
 
@@ -53,6 +54,12 @@ button.secondary{background:#fff;color:#fc4c02;border:2px solid #fc4c02}
 .note{background:#f2f2f2;border-radius:.5rem;padding:.6rem .8rem}
 details{margin-top:1.2rem}
 summary{cursor:pointer;font-weight:600}
+ol{padding-left:1.2rem}
+li{margin:.6rem 0}
+.copyrow{display:flex;gap:.4rem}
+.copyrow input{background:#f2f2f2}
+button.copy{width:auto;margin:0;padding:.6rem .8rem;background:#fff;color:#fc4c02;border:2px solid #fc4c02}
+a.button{display:block;box-sizing:border-box;text-align:center;text-decoration:none;padding:.8rem;font-weight:600;border-radius:.4rem;margin-top:.4rem;color:#fc4c02;border:2px solid #fc4c02}
 </style></head><body>
 <h1>Strava Viewer setup</h1>
 <p class="timer" id="timer">Setup mode ends in %MINUTES% minutes</p>
@@ -77,9 +84,30 @@ summary{cursor:pointer;font-weight:600}
 <input id="password" name="password" type="password" maxlength="63" placeholder="%PASSWORD_HINT%">
 
 <h2>Strava</h2>
-<small>Create an API application at strava.com/settings/api with <b>strava-viewer.local</b> as
-Authorization Callback Domain, and copy its Client ID and Client Secret here. Fields left empty
-keep their stored value.</small>
+<details%GUIDE_OPEN%><summary>Create the Strava API application (once)</summary>
+<ol>
+<li><a href="https://www.strava.com/settings/api" target="_blank" rel="noopener">Open
+strava.com/settings/api</a> and log in.</li>
+<li>Fill in the form with these values:
+<label for="appName">Application Name</label>
+<div class="copyrow"><input id="appName" readonly value="ePaper Strava Viewer"><button type="button" class="copy">Copy</button></div>
+<label>Category</label>
+<small>Choose <b>Visualizer</b>. Leave <b>Club</b> empty.</small>
+<label for="appWebsite">Website</label>
+<div class="copyrow"><input id="appWebsite" readonly value="https://github.com/joj0x90/ePaper-strava-viewer"><button type="button" class="copy">Copy</button></div>
+<label for="appDescription">Application Description</label>
+<div class="copyrow"><input id="appDescription" readonly value="Shows my latest activity on an e-paper display."><button type="button" class="copy">Copy</button></div>
+<label for="appDomain">Authorization Callback Domain</label>
+<div class="copyrow"><input id="appDomain" readonly value="strava-viewer.local"><button type="button" class="copy">Copy</button></div>
+</li>
+<li>Strava asks for an icon next. Download it here and upload it there:
+<a class="button" href="/app-icon.png" download="strava-viewer-icon.png">Download the app icon</a></li>
+<li>Copy the <b>Client ID</b> and <b>Client Secret</b> into the fields below. Or copy the
+whole <i>My API Application</i> page (with the secret shown) and paste it into one of the two
+fields: both are filled in.</li>
+</ol>
+</details>
+<small>Fields left empty keep their stored value.</small>
 <label for="clientId">Client ID</label>
 <input id="clientId" name="clientId" value="%CLIENT_ID%" inputmode="numeric" autocomplete="off">
 <label for="clientSecret">Client secret</label>
@@ -113,6 +141,33 @@ function tick() {
   setTimeout(tick, 1000);
 }
 tick();
+
+// The page is plain http, where the clipboard API is missing: copy the selected field instead.
+// If even that fails, the value stays selected for copying by hand.
+for (const button of document.querySelectorAll('button.copy')) {
+  button.onclick = () => {
+    const input = button.previousElementSibling;
+    input.select();
+    input.setSelectionRange(0, input.value.length);
+    let copied = false;
+    try { copied = document.execCommand('copy'); } catch (e) {}
+    button.textContent = copied ? 'Copied' : 'Selected';
+    setTimeout(() => { button.textContent = 'Copy'; }, 1500);
+  };
+}
+
+// The copied "My API Application" page fills both fields. A single value is pasted as usual.
+function pasteApp(event) {
+  const text = (event.clipboardData || window.clipboardData).getData('text');
+  const id = text.match(/Client ID\D*?(\d+)/i);
+  const secret = text.match(/Client Secret\W*?([0-9a-f]{40})\b/i);
+  if (!id && !secret) return;
+  event.preventDefault();
+  if (id) document.getElementById('clientId').value = id[1];
+  if (secret) document.getElementById('clientSecret').value = secret[1];
+}
+document.getElementById('clientId').addEventListener('paste', pasteApp);
+document.getElementById('clientSecret').addEventListener('paste', pasteApp);
 </script>
 </body></html>
 )html";
@@ -294,6 +349,7 @@ static void handleRoot() {
     page.replace("%NETWORKS%", networkOptions);
     page.replace("%PASSWORD_HINT%", c.wifiPassword.isEmpty() ? "" : storedHint(c.wifiPassword));
     page.replace("%CLIENT_ID%", htmlEscape(c.stravaClientId));
+    page.replace("%GUIDE_OPEN%", c.stravaClientId.isEmpty() ? " open" : "");
     page.replace("%SECRET_HINT%", storedHint(c.stravaClientSecret));
     page.replace("%TOKEN_HINT%", storedHint(c.stravaRefreshToken));
     page.replace("%STRAVA_CONNECT%", usingAccessPoint ? STRAVA_OFFLINE : STRAVA_CONNECT);
@@ -440,6 +496,13 @@ static void handleReset() {
     finished = true;
 }
 
+// The icon to upload when creating the Strava API application (tools/app_icon/make_icon.py)
+static void handleAppIcon() {
+    server.sendHeader("Content-Disposition", "attachment; filename=\"strava-viewer-icon.png\"");
+    server.send_P(200, "image/png", reinterpret_cast<const char *>(APP_ICON_PNG),
+                  sizeof(APP_ICON_PNG));
+}
+
 // In the access point every address leads to the setup page: phones check a known address after
 // connecting and open the captive portal when they get redirected.
 static void handleNotFound() {
@@ -481,6 +544,7 @@ String startSetupPortal(bool accessPoint, const DeviceStatus &status, uint32_t d
     server.on("/", HTTP_GET, handleRoot);
     server.on("/save", HTTP_POST, handleSave);
     server.on("/reset", HTTP_POST, handleReset);
+    server.on("/app-icon.png", HTTP_GET, handleAppIcon);
     server.on("/strava/connect", HTTP_POST, handleStravaConnect);
     server.on("/strava/callback", HTTP_GET, handleStravaCallback);
     server.on("/strava/code", HTTP_POST, handleStravaCode);
