@@ -34,6 +34,9 @@
 
 #define BODY_START_X 20
 #define BODY_START_Y 60
+// Baseline of a first body line in the large font (FreeSans18pt8b): BODY_START_Y is the top of
+// the body, and the capitals of that font are ~25 px tall
+#define BODY_LARGE_BASELINE (BODY_START_Y + 25)
 
 #define FOOTER_SIZE_Y 20
 
@@ -529,7 +532,8 @@ void drawError(const char *message) {
         display.fillScreen(GxEPD_WHITE);
         display.setTextColor(GxEPD_BLACK);
         drawHeading("Error:", 0, Icon::Error);
-        display.setCursor(BODY_START_X, BODY_START_Y);
+        display.setFont(&FreeSans18pt8b);
+        display.setCursor(BODY_START_X, BODY_LARGE_BASELINE);
         printText(message);
     } while (display.nextPage());
 }
@@ -542,12 +546,12 @@ void drawUpdate(const char *fromVersion, const char *toVersion) {
         display.setTextColor(GxEPD_BLACK);
         drawHeading("Updating firmware", 0, Icon::None);
         display.setFont(&FreeSans18pt8b);
-        display.setCursor(BODY_START_X, BODY_START_Y);
+        display.setCursor(BODY_START_X, BODY_LARGE_BASELINE);
         printText((String(fromVersion) + " -> " + toVersion).c_str());
         display.setFont(&FreeSans12pt8b);
-        display.setCursor(BODY_START_X, BODY_START_Y + 50);
+        display.setCursor(BODY_START_X, BODY_LARGE_BASELINE + 50);
         printText("Downloading the new firmware, this can take a minute.");
-        display.setCursor(BODY_START_X, BODY_START_Y + 80);
+        display.setCursor(BODY_START_X, BODY_LARGE_BASELINE + 80);
         printText("The latest activity will be shown afterwards.");
         drawFooter();
     } while (display.nextPage());
@@ -722,7 +726,7 @@ void drawSetupHint(const char *heading, const char *message, SetupHint hint, con
         display.setTextColor(GxEPD_BLACK);
         drawHeading(heading, 0, Icon::Error);
         display.setFont(&FreeSans18pt8b);
-        display.setCursor(BODY_START_X, BODY_START_Y + 25);
+        display.setCursor(BODY_START_X, BODY_LARGE_BASELINE);
         display.print(fitText(message, display.width() - 2 * BODY_START_X));
 
         if (hint == SetupHint::StravaFailed) {  // the WiFi works, its own isn't needed
