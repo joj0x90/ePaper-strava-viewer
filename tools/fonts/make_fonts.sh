@@ -8,10 +8,10 @@
 set -e
 
 here=$(cd "$(dirname "$0")" && pwd)
-firmware="$here/../.."
-fontconvert_src="$firmware/.pio/libdeps/esp32dev/Adafruit GFX Library/fontconvert"
+root="$here/../.."
+fontconvert_src="$root/.pio/libdeps/esp32dev/Adafruit GFX Library/fontconvert"
 font_dir=${FONT_DIR:-/usr/share/fonts/gnu-free}
-out="$firmware/lib/EpaperDisplay/src/fonts"
+out="$root/lib/EpaperDisplay/src/fonts"
 build="$here/build"
 
 mkdir -p "$build" "$out"

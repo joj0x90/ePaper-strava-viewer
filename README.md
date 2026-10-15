@@ -27,7 +27,7 @@ deep sleep and only draws current while the button is pressed.
 ```
 
 Another pin works too, as long as it's an RTC GPIO (0, 2, 4, 12–15, 25–27, 32–39) that's still
-free: change `BUTTON_PIN` in `firmware/lib/SleepSchedule/src/SleepSchedule.cpp`. GPIO34–39 have no
+free: change `BUTTON_PIN` in `lib/SleepSchedule/src/SleepSchedule.cpp`. GPIO34–39 have no
 internal pull-up and need an external 10 kΩ resistor to 3V3.
 
 ### Battery power (optional)
@@ -199,7 +199,7 @@ Without the setup page, e.g. for `secrets.h`, get the refresh token by hand (cal
 ### 3. Credentials
 
 Enter the WiFi and Strava credentials on the [setup page](#setup-page), or store them with a local
-build: create `firmware/include/secrets.h`:
+build: create `include/secrets.h`:
 
 ```cpp
 #pragma once
@@ -266,26 +266,25 @@ Both test methods draw the same overview: one grid cell per sport type with its 
 #### On the PC (no flashing)
 
 ```sh
-firmware/tools/icon_overview/pc/run.sh
+tools/icon_overview/pc/run.sh
 ```
 
-Compiles the icon code for the PC and writes `firmware/tools/icon_overview/pc/build/icon_overview.png` (800×480, like the display). Fast to repeat while designing icons.
+Compiles the icon code for the PC and writes `tools/icon_overview/pc/build/icon_overview.png` (800×480, like the display). Fast to repeat while designing icons.
 
 Requirements:
 - `g++`
-- the libraries PlatformIO downloads: run `pio run` in `firmware/` once
+- the libraries PlatformIO downloads: run `pio run` once
 - Python 3 with Pillow (`pip install pillow`) for the PNG; without it you get `icon_overview.pbm`, which most image viewers open as well
 
-The script uses small stand-ins for the Arduino core (`firmware/tools/icon_overview/pc/stubs/`) so Adafruit GFX compiles on the PC. The drawing code is the same as on the ESP32, so the image matches the panel pixel for pixel.
+The script uses small stand-ins for the Arduino core (`tools/icon_overview/pc/stubs/`) so Adafruit GFX compiles on the PC. The drawing code is the same as on the ESP32, so the image matches the panel pixel for pixel.
 
 #### On the e-paper
 
 ```sh
-cd firmware
 pio run -e icon-test -t upload
 ```
 
-Flashes a test firmware (`firmware/tools/icon_overview/device/main.cpp`) that draws the overview once and puts the display to sleep. Use this to check the final look on the panel. Afterwards flash the normal firmware again with `pio run -t upload`.
+Flashes a test firmware (`tools/icon_overview/device/main.cpp`) that draws the overview once and puts the display to sleep. Use this to check the final look on the panel. Afterwards flash the normal firmware again with `pio run -t upload`.
 
 In VS Code you can switch the environment in the PlatformIO toolbar (*Switch PlatformIO Project Environment*) to `env:icon-test` and use Upload as usual.
 
@@ -299,7 +298,7 @@ Strava error 1 (HTTP 401): Strava login failed
 {"message":"Authorization Error", ...}
 ```
 
-The numbers are the values of `WifiErrorCode` (`firmware/lib/WifiConnect/src/WifiConnect.h`) and `StravaErrorCode` (`firmware/lib/StravaApi/src/StravaApi.h`). For Strava errors the last line is the response body or the JSON parser error.
+The numbers are the values of `WifiErrorCode` (`lib/WifiConnect/src/WifiConnect.h`) and `StravaErrorCode` (`lib/StravaApi/src/StravaApi.h`). For Strava errors the last line is the response body or the JSON parser error.
 
 ## Troubleshooting
 

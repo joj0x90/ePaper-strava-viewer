@@ -5,7 +5,7 @@
     "C_Cpp.errorSquiggles": "enabled",
     "clangd.enable": false,
 
-    // Indentation is defined by ../.clang-format; don't guess it from file content.
+    // Indentation is defined by .clang-format; don't guess it from file content.
     "editor.detectIndentation": false,
     "editor.insertSpaces": true,
     "editor.tabSize": 4,

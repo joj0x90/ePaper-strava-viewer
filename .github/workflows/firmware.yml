@@ -14,9 +14,6 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: firmware
     steps:
       - uses: actions/checkout@v4
         with:
@@ -26,8 +23,8 @@ jobs:
         with:
           path: |
             ~/.platformio
-            firmware/.pio/libdeps
-          key: pio-${{ hashFiles('firmware/platformio.ini') }}
+            .pio/libdeps
+          key: pio-${{ hashFiles('platformio.ini') }}
 
       - uses: actions/setup-python@v5
         with:
@@ -44,7 +41,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: firmware
-          path: firmware/.pio/build/esp32dev/firmware.bin
+          path: .pio/build/esp32dev/firmware.bin
 
       - name: Release
         if: startsWith(github.ref, 'refs/tags/v')

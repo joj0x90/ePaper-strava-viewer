@@ -5,13 +5,13 @@
 set -e
 
 here=$(cd "$(dirname "$0")" && pwd)
-firmware="$here/../../.."
-gfx="$firmware/.pio/libdeps/esp32dev/Adafruit GFX Library"
-lib="$firmware/lib/EpaperDisplay/src"
+root="$here/../../.."
+gfx="$root/.pio/libdeps/esp32dev/Adafruit GFX Library"
+lib="$root/lib/EpaperDisplay/src"
 out="$here/build"
 
 if [ ! -d "$gfx" ]; then
-    echo "Adafruit GFX not found, run 'pio run' in firmware/ once first." >&2
+    echo "Adafruit GFX not found, run 'pio run' once first." >&2
     exit 1
 fi
 
