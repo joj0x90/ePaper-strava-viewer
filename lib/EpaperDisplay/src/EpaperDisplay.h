@@ -5,14 +5,23 @@
 
 #include "StravaApi.h"
 
-// Sets up SPI and the 7.5" e-paper panel. Call once before drawing.
-void initDisplay();
+// Sets up SPI and the 7.5" e-paper panel. Call once before drawing. keepScreen is for
+// drawActivityChanges(): the panel still shows what was drawn before the last hibernateDisplay().
+void initDisplay(bool keepScreen = false);
 
 // footerNotice is shown next to the firmware version, e.g. a failed update. batteryPercent is
 // shown in the footer's right corner, unless it's negative (no battery). updateAvailable shows a
 // bell in the footer's left corner.
-void drawActivity(StravaActivity activity, const char *footerNotice = "",
+void drawActivity(const StravaActivity &activity, const char *footerNotice = "",
                   int8_t batteryPercent = -1, bool updateAvailable = false);
+// Like drawActivity(), but with a fast partial refresh that doesn't flash the screen: only the
+// pixels that differ from the shown screen change. shown and its footer must be exactly what
+// drawActivity() or drawActivityChanges() drew last, e.g. the same activity with fewer kudos.
+// Partial refreshes leave ghosting behind, so do a full one with drawActivity() now and then.
+void drawActivityChanges(const StravaActivity &shown, const char *shownNotice,
+                         int8_t shownBatteryPercent, bool shownUpdateAvailable,
+                         const StravaActivity &activity, const char *footerNotice,
+                         int8_t batteryPercent, bool updateAvailable);
 void drawError(const char *message);
 // Shown while a new firmware is downloaded, which delays the activity.
 void drawUpdate(const char *fromVersion, const char *toVersion);

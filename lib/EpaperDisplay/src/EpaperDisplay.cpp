@@ -289,7 +289,7 @@ static void formatPace(char (&buf)[N], float speedMps) {
              (unsigned long)(secondsPerKm % 60));
 }
 
-static void drawActivityStats(StravaActivity act) {
+static void drawActivityStats(const StravaActivity &act) {
     char pace_max[12];
     char pace_avg[12];
     char kcal[6];
@@ -508,39 +508,63 @@ static void drawKudosComments(uint8_t kudos, uint8_t comments) {
     drawCountBadge(Icon::Comment, count, display.width() / 2 * 2 / 3);
 }
 
-void drawActivity(StravaActivity act, const char *footerNotice, int8_t batteryPercent,
+// The whole activity screen. Only draws into the buffer, like drawHeading().
+static void drawActivityScreen(const StravaActivity &act, const char *footerNotice,
+                               int8_t batteryPercent, bool updateAvailable) {
+    display.fillScreen(GxEPD_WHITE);
+    display.setTextColor(GxEPD_BLACK);
+
+    drawHeading(act.name.c_str(), act.achievement_count, iconForSportType(act.type.c_str()));
+
+    drawActivityStats(act);
+
+    // the right half shows the map, or the heart rate for activities without one (swims)
+    const bool heartRateChart = !act.showMap && act.heart_rate.count > 0;
+    if (act.showMap || heartRateChart) {
+        display.drawLine(display.width() / 2, BODY_START_Y, display.width() / 2,
+                         display.height() - (FOOTER_SIZE_Y * 2), GxEPD_BLACK);
+    }
+    if (act.showMap) {
+        drawActivityMap(act.map);
+    } else if (heartRateChart) {
+        const Box box = rightHalfBox();
+        drawHeartRateChart(display, act.heart_rate.bpm, act.heart_rate.count,
+                           lroundf(act.average_heartrate), lroundf(act.max_heartrate),
+                           &FreeSans12pt8b, box.x, box.y, box.w, box.h, GxEPD_BLACK,
+                           GxEPD_WHITE);
+        display.setTextWrap(true);  // Adafruit GFX default, which the chart turned off
+    }
+
+    drawKudosComments(act.kudos_count, act.comment_count);
+
+    drawFooter(footerNotice, batteryPercent, updateAvailable);
+}
+
+void drawActivity(const StravaActivity &act, const char *footerNotice, int8_t batteryPercent,
                   bool updateAvailable) {
     display.setFullWindow();
     display.firstPage();
     do {
-        display.fillScreen(GxEPD_WHITE);
-        display.setTextColor(GxEPD_BLACK);
+        drawActivityScreen(act, footerNotice, batteryPercent, updateAvailable);
+    } while (display.nextPage());
+}
 
-        drawHeading(act.name.c_str(), act.achievement_count, iconForSportType(act.type.c_str()));
+void drawActivityChanges(const StravaActivity &shown, const char *shownNotice,
+                         int8_t shownBatteryPercent, bool shownUpdateAvailable,
+                         const StravaActivity &act, const char *footerNotice,
+                         int8_t batteryPercent, bool updateAvailable) {
+    // the partial refresh only changes the pixels that differ from the previous image, which
+    // the controller lost in hibernate(): give it back what the screen shows
+    display.setFullWindow();
+    display.firstPage();
+    do {
+        drawActivityScreen(shown, shownNotice, shownBatteryPercent, shownUpdateAvailable);
+    } while (display.nextPageToPrevious());
 
-        drawActivityStats(act);
-
-        // the right half shows the map, or the heart rate for activities without one (swims)
-        const bool heartRateChart = !act.showMap && act.heart_rate.count > 0;
-        if (act.showMap || heartRateChart) {
-            display.drawLine(display.width() / 2, BODY_START_Y, display.width() / 2,
-                             display.height() - (FOOTER_SIZE_Y * 2), GxEPD_BLACK);
-        }
-        if (act.showMap) {
-            drawActivityMap(act.map);
-        } else if (heartRateChart) {
-            const Box box = rightHalfBox();
-            drawHeartRateChart(display, act.heart_rate.bpm, act.heart_rate.count,
-                               lroundf(act.average_heartrate), lroundf(act.max_heartrate),
-                               &FreeSans12pt8b, box.x, box.y, box.w, box.h, GxEPD_BLACK,
-                               GxEPD_WHITE);
-            display.setTextWrap(true);  // Adafruit GFX default, which the chart turned off
-        }
-
-        drawKudosComments(act.kudos_count, act.comment_count);
-
-        drawFooter(footerNotice, batteryPercent, updateAvailable);
-
+    display.setPartialWindow(0, 0, display.width(), display.height());
+    display.firstPage();
+    do {
+        drawActivityScreen(act, footerNotice, batteryPercent, updateAvailable);
     } while (display.nextPage());
 }
 
@@ -783,9 +807,10 @@ void hibernateDisplay() {
     display.hibernate();
 }
 
-void initDisplay() {
+void initDisplay(bool keepScreen) {
     SPI.end();
     SPI.begin(13, 12, 14, 15);  // SCK=13, MISO=12 (unused), MOSI=14, SS=15
-    display.init(115200, true, 2, false);
+    // initial makes the first refresh a full one, which a partial refresh mustn't be
+    display.init(115200, !keepScreen, 2, false);
     display.setRotation(0);
 }

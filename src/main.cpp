@@ -24,43 +24,103 @@ static const uint32_t FALLBACK_SLEEP_S = 3600;
 static const uint8_t SETUP_MINUTES = 10;
 
 // What is currently on the display, kept in flash (NVS) so it survives deep sleep, resets and
-// power loss: the activity ID (0 = no activity, e.g. an error screen) and the firmware that drew
-// it. Flashing a new firmware (e.g. a layout change) thus redraws the same activity once.
+// power loss: the activity ID (0 = no activity, e.g. an error screen), the firmware that drew
+// it, and what can change about the activity or footer. Flashing a new firmware (e.g. a layout
+// change) thus redraws the same activity once.
 static const char *PREFS_NAMESPACE = "display";
 static const char *PREFS_SHOWN_ID = "shownId";
 static const char *PREFS_SHOWN_FIRMWARE = "shownFw";
 static const char *PREFS_SHOWN_NOTICE = "shownNotice";
 static const char *PREFS_SHOWN_BATTERY = "shownBattery";
 static const char *PREFS_SHOWN_BELL = "shownBell";
+static const char *PREFS_SHOWN_NAME = "shownName";
+static const char *PREFS_SHOWN_DESCRIPTION = "shownDesc";
+static const char *PREFS_SHOWN_DATE = "shownDate";
+static const char *PREFS_SHOWN_KUDOS = "shownKudos";
+static const char *PREFS_SHOWN_COMMENTS = "shownComments";
+static const char *PREFS_SHOWN_CHART = "shownChart";
+static const char *PREFS_PARTIAL_REFRESHES = "partials";
 // The battery charge alone redraws the display only after it changed by this many percent, so
 // ADC noise doesn't cost an e-paper refresh (and battery) every hour.
 static const int8_t BATTERY_REDRAW_STEP = 5;
+// Changes of the shown activity are drawn with a partial refresh, which leaves ghosting behind:
+// after this many in a row, the next one is a full refresh.
+static const uint8_t MAX_PARTIAL_REFRESHES = 5;
+// The description is kept only this long (NVS strings are limited to 4000 bytes). The display
+// shows far less of it, so the cut-off part changes nothing on it.
+static const size_t SHOWN_DESCRIPTION_LENGTH = 1000;
 
-static bool isAlreadyShown(uint64_t activityId, const String &notice, int8_t batteryPercent,
-                           bool updateBell) {
+// The activity screen on the display. activity has only the fields that can change filled.
+struct ShownScreen {
+    uint64_t activityId = 0;
+    String firmware;
+    String notice;
+    int8_t batteryPercent = -1;
+    bool updateBell = false;
+    StravaActivity activity;
+    bool heartRateChart = false;   // the heart rate request can fail, which leaves the chart out
+    uint8_t partialRefreshes = 0;  // since the last full refresh
+};
+
+static ShownScreen loadShownScreen() {
+    ShownScreen shown;
     Preferences prefs;
-    if (!prefs.begin(PREFS_NAMESPACE, true)) return false;  // namespace doesn't exist yet
-    const int8_t shownBattery = prefs.getChar(PREFS_SHOWN_BATTERY, -1);
-    // a battery that was connected or disconnected (-1) always counts as a change
-    const bool batteryShown = (shownBattery < 0) == (batteryPercent < 0) &&
-                              abs(shownBattery - batteryPercent) < BATTERY_REDRAW_STEP;
-    bool shown = prefs.getULong64(PREFS_SHOWN_ID, 0) == activityId &&
-                 prefs.getString(PREFS_SHOWN_FIRMWARE) == firmwareHash() &&
-                 prefs.getString(PREFS_SHOWN_NOTICE) == notice && batteryShown &&
-                 prefs.getBool(PREFS_SHOWN_BELL, false) == updateBell;
+    if (!prefs.begin(PREFS_NAMESPACE, true)) return shown;  // namespace doesn't exist yet
+    shown.activityId = prefs.getULong64(PREFS_SHOWN_ID, 0);
+    shown.firmware = prefs.getString(PREFS_SHOWN_FIRMWARE);
+    shown.notice = prefs.getString(PREFS_SHOWN_NOTICE);
+    shown.batteryPercent = prefs.getChar(PREFS_SHOWN_BATTERY, -1);
+    shown.updateBell = prefs.getBool(PREFS_SHOWN_BELL, false);
+    shown.activity.name = prefs.getString(PREFS_SHOWN_NAME);
+    shown.activity.description = prefs.getString(PREFS_SHOWN_DESCRIPTION);
+    shown.activity.date = prefs.getString(PREFS_SHOWN_DATE);
+    shown.activity.kudos_count = prefs.getUChar(PREFS_SHOWN_KUDOS, 0);
+    shown.activity.comment_count = prefs.getUChar(PREFS_SHOWN_COMMENTS, 0);
+    shown.heartRateChart = prefs.getBool(PREFS_SHOWN_CHART, false);
+    shown.partialRefreshes = prefs.getUChar(PREFS_PARTIAL_REFRESHES, 0);
     prefs.end();
     return shown;
 }
 
-static void saveShownActivityId(uint64_t id, const String &notice = "",
-                                int8_t batteryPercent = -1, bool updateBell = false) {
+// True if the activity's fields that can change are the shown ones
+static bool sameActivityFields(const StravaActivity &shown, const StravaActivity &activity) {
+    return shown.name == activity.name &&
+           shown.description == activity.description.substring(0, SHOWN_DESCRIPTION_LENGTH) &&
+           shown.date == activity.date && shown.kudos_count == activity.kudos_count &&
+           shown.comment_count == activity.comment_count;
+}
+
+static bool batteryIsShown(int8_t shownPercent, int8_t batteryPercent) {
+    // a battery that was connected or disconnected (-1) always counts as a change
+    return (shownPercent < 0) == (batteryPercent < 0) &&
+           abs(shownPercent - batteryPercent) < BATTERY_REDRAW_STEP;
+}
+
+static void saveShownActivityId(uint64_t id) {
     Preferences prefs;
     prefs.begin(PREFS_NAMESPACE, false);
     prefs.putULong64(PREFS_SHOWN_ID, id);
     prefs.putString(PREFS_SHOWN_FIRMWARE, firmwareHash());
+    prefs.end();
+}
+
+static void saveShownActivity(const StravaActivity &activity, const String &notice,
+                              int8_t batteryPercent, bool updateBell, uint8_t partialRefreshes) {
+    Preferences prefs;
+    prefs.begin(PREFS_NAMESPACE, false);
+    prefs.putULong64(PREFS_SHOWN_ID, activity.id);
+    prefs.putString(PREFS_SHOWN_FIRMWARE, firmwareHash());
     prefs.putString(PREFS_SHOWN_NOTICE, notice);
     prefs.putChar(PREFS_SHOWN_BATTERY, batteryPercent);
     prefs.putBool(PREFS_SHOWN_BELL, updateBell);
+    prefs.putString(PREFS_SHOWN_NAME, activity.name);
+    prefs.putString(PREFS_SHOWN_DESCRIPTION,
+                    activity.description.substring(0, SHOWN_DESCRIPTION_LENGTH));
+    prefs.putString(PREFS_SHOWN_DATE, activity.date);
+    prefs.putUChar(PREFS_SHOWN_KUDOS, activity.kudos_count);
+    prefs.putUChar(PREFS_SHOWN_COMMENTS, activity.comment_count);
+    prefs.putBool(PREFS_SHOWN_CHART, activity.heart_rate.count > 0);
+    prefs.putUChar(PREFS_PARTIAL_REFRESHES, partialRefreshes);
     prefs.end();
 }
 
@@ -110,8 +170,10 @@ static void showUpdating(const char *newVersion) {
 }
 
 // Loads the latest activity and draws it with the footer notice, battery charge and update bell
-// if it isn't on the display already, or draws the error that occurred. A rejected login is only
-// returned: the caller decides how to get new credentials. Needs WiFi.
+// if it isn't on the display already, or draws the error that occurred. If only the activity's
+// title, description, date, kudos or comments or the footer changed, it's redrawn with a partial
+// refresh. A rejected login is only returned: the caller decides how to get new credentials.
+// Needs WiFi.
 static StravaError showLastActivity(const Credentials &credentials, const String &notice,
                                     int8_t batteryPercent, bool updateBell) {
     String accessToken;
@@ -121,6 +183,8 @@ static StravaError showLastActivity(const Credentials &credentials, const String
                          credentials.stravaRefreshToken.c_str(), accessToken);
     if (stravaError.ok()) {
         stravaError = fetchLastActivity(accessToken, activity);
+        // the list has no description, so its changes are only seen in the details
+        if (stravaError.ok()) stravaError = fetchActivityById(accessToken, activity.id, activity);
         // stravaError = fetchActivityById(accessToken, 20351131615, activity);
     }
     if (!stravaError.ok()) {
@@ -133,7 +197,15 @@ static StravaError showLastActivity(const Credentials &credentials, const String
     Serial.printf("%llu | %s | %s | %s | %.2f km\n", (unsigned long long)activity.id,
                   activity.name.c_str(), activity.type.c_str(), activity.date.c_str(),
                   activity.distance_km);
-    if (isAlreadyShown(activity.id, notice, batteryPercent, updateBell)) {
+    const ShownScreen shown = loadShownScreen();
+    // a partial refresh draws the shown screen again (with the stored fields), which only gives
+    // the same pixels for the same activity drawn by the same firmware
+    const bool sameActivity = shown.activityId == activity.id && shown.firmware == firmwareHash();
+    const bool sameFields = sameActivityFields(shown.activity, activity);
+    const bool sameFooter = shown.notice == notice &&
+                            batteryIsShown(shown.batteryPercent, batteryPercent) &&
+                            shown.updateBell == updateBell;
+    if (sameActivity && sameFields && sameFooter) {
         Serial.println("Activity, battery and bell are already shown by this firmware, "
                        "not refreshing");
         return stravaError;
@@ -148,10 +220,28 @@ static StravaError showLastActivity(const Credentials &credentials, const String
         }
     }
 
+    const bool sameChart = shown.heartRateChart == (activity.heart_rate.count > 0);
+    if (sameActivity && sameChart && shown.partialRefreshes < MAX_PARTIAL_REFRESHES) {
+        Serial.println("Activity or footer changed, partial refresh");
+        // the shown screen is the new activity with the stored fields that can change
+        StravaActivity shownActivity = activity;
+        shownActivity.name = shown.activity.name;
+        shownActivity.description = shown.activity.description;
+        shownActivity.date = shown.activity.date;
+        shownActivity.kudos_count = shown.activity.kudos_count;
+        shownActivity.comment_count = shown.activity.comment_count;
+        initDisplay(true);
+        drawActivityChanges(shownActivity, shown.notice.c_str(), shown.batteryPercent,
+                            shown.updateBell, activity, notice.c_str(), batteryPercent, updateBell);
+        hibernateDisplay();
+        saveShownActivity(activity, notice, batteryPercent, updateBell, shown.partialRefreshes + 1);
+        return stravaError;
+    }
+
     initDisplay();
     drawActivity(activity, notice.c_str(), batteryPercent, updateBell);
     hibernateDisplay();
-    saveShownActivityId(activity.id, notice, batteryPercent, updateBell);
+    saveShownActivity(activity, notice, batteryPercent, updateBell, 0);
     return stravaError;
 }
 
