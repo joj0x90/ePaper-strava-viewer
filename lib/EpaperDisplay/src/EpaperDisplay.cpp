@@ -296,7 +296,7 @@ static void drawActivityStats(const StravaActivity &act) {
     char distance[11];
     formatPace(pace_max, act.max_speed);
     formatPace(pace_avg, act.average_speed);
-    snprintf(kcal, sizeof(kcal), "=%4i", act.burned_calories);
+    snprintf(kcal, sizeof(kcal), "=%4ld", lroundf(act.burned_calories));
     snprintf(distance, sizeof(distance), "%.2f km", act.distance_km);
 
     display.setFont(&FreeSans12pt8b);
