@@ -296,7 +296,7 @@ static void drawActivityStats(const StravaActivity &act) {
     char distance[11];
     formatPace(pace_max, act.max_speed);
     formatPace(pace_avg, act.average_speed);
-    snprintf(kcal, sizeof(kcal), "=%4f", act.burned_calories);
+    snprintf(kcal, sizeof(kcal), "=%4i", act.burned_calories);
     snprintf(distance, sizeof(distance), "%.2f km", act.distance_km);
 
     display.setFont(&FreeSans12pt8b);
@@ -530,8 +530,7 @@ static void drawActivityScreen(const StravaActivity &act, const char *footerNoti
         const Box box = rightHalfBox();
         drawHeartRateChart(display, act.heart_rate.bpm, act.heart_rate.count,
                            lroundf(act.average_heartrate), lroundf(act.max_heartrate),
-                           &FreeSans12pt8b, box.x, box.y, box.w, box.h, GxEPD_BLACK,
-                           GxEPD_WHITE);
+                           &FreeSans12pt8b, box.x, box.y, box.w, box.h, GxEPD_BLACK, GxEPD_WHITE);
         display.setTextWrap(true);  // Adafruit GFX default, which the chart turned off
     }
 
@@ -551,8 +550,8 @@ void drawActivity(const StravaActivity &act, const char *footerNotice, int8_t ba
 
 void drawActivityChanges(const StravaActivity &shown, const char *shownNotice,
                          int8_t shownBatteryPercent, bool shownUpdateAvailable,
-                         const StravaActivity &act, const char *footerNotice,
-                         int8_t batteryPercent, bool updateAvailable) {
+                         const StravaActivity &act, const char *footerNotice, int8_t batteryPercent,
+                         bool updateAvailable) {
     // the partial refresh only changes the pixels that differ from the previous image, which
     // the controller lost in hibernate(): give it back what the screen shows
     display.setFullWindow();
