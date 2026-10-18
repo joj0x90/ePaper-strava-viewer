@@ -255,7 +255,7 @@ static void drawHeading(const char *heading, uint8_t achievements, Icon icon = I
     display.setCursor(heading_start, HEADING_START_Y);
     display.print(fitText(heading, headingEnd - heading_start));
 
-    const int16_t lineY = HEADING_START_Y + 5;
+    const int16_t lineY = HEADING_START_Y + 12;
     display.drawLine(HEADING_START_X, lineY, display.width() - HEADING_START_X, lineY, GxEPD_BLACK);
 }
 
